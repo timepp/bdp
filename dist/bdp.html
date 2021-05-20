@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
+        <link rel="stylesheet" href="styles.css">
+        <script type="module">
+            import * as bdp from "./bdp.js"
+            import * as visualizer from './visualizer.js'
+
+            bdp.init()
+
+            $(document).ready(() => {
+                $("#fc").change(e => {
+                    onchange(e)
+                })
+            })
+
+            async function onchange(e) {
+                const f = e.target.files[0]
+                console.log(e.target.files[0])
+                const result = await bdp.parse(f, f.name)
+                console.log(result)
+                const vis = new visualizer.Visualizer(document.getElementById('UI'), result)
+                vis.visualize()
+            }
+        </script>
+    </head>
+    <body>
+        <input type="file" id="fc">
+        <p></p>
+        <div id="UI"></div>
+    </body>
+</html>

@@ -1,0 +1,39 @@
+table.data_view {
+    font-family: monospace;
+}
+
+table.data_view td.text {
+    padding-left: 10px;
+}
+
+table.data_view td.offset {
+    padding-right: 10px;
+}
+
+table.data_view td.highlight {
+    background-color: lime;
+}
+
+li {
+    font-family: monospace;
+    cursor: pointer
+}
+
+li.highlight {
+    background-color: lightskyblue;
+}
+
+ul {
+    margin-top: 0;
+    font-family: monospace;
+}
+
+td.tree {
+    vertical-align: top;
+    padding-right: 20px;
+    overflow: scroll;
+}
+
+td.view {
+    padding-left: 20px;
+}
