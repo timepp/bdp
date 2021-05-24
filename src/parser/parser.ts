@@ -11,17 +11,22 @@ export class ParseHelper {
     position: number
     endian: dom.Endian
     num: { [id:string]:number } // memo for recent numbers
+    regionCache: {
+        [id:string]:dom.Region
+    }
 
     constructor(buffer: ArrayBuffer) {
         this.buffer = buffer
         this.position = 0
         this.num = {}
+        this.regionCache = {}
         this.endian = dom.Endian.LE
     }
 
     createRegion(type: dom.RegionType, pos: number, length: number, ID:string, description?:string, callback?:(r:dom.Region)=>void) : dom.Region {
+        const startPos = pos == -1? this.position : pos
         const r: dom.Region = {
-            ID, type, description: description || '', startPos: pos, endPos: pos + length, endian: this.endian
+            ID, type, description: description || '', startPos, endPos: startPos + length, endian: this.endian
         }
 
         switch (type) {
@@ -46,6 +51,8 @@ export class ParseHelper {
             callback(r)
         }
 
+        this.position = r.endPos
+        this.regionCache[ID] = r
         return r
     }
 
@@ -59,5 +66,16 @@ export class ParseHelper {
 
     setEndian(endian: dom.Endian) {
         this.endian = endian
+    }
+
+    getNumber(regions: dom.Region[] | undefined, name: string) {
+        if (regions !== undefined) {
+            for (const r of regions) {
+                if (r.ID === name) {
+                    return Number(r.numValue)
+                }
+            }
+        }
+        return 0
     }
 }

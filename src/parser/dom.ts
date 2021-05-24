@@ -19,7 +19,7 @@ export type Region = {
 
     // for compound region, this may be sparse to save memory, in such case the followed function object can be used to fetch value
     subRegions?: Region[]
-    subRegionFetcher?: (index: number) => void
+    subRegionFetcher?: (index: number) => Region
 }
 
 export type FileDOM = {

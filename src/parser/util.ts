@@ -1,5 +1,3 @@
-import * as dom from './dom.js'
-
 export function ensureLength(buf: ArrayBuffer, len: number, start: number = 0) {
     if (buf.byteLength < start + len) throw Error('invalid ico file')
 }

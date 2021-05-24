@@ -17,25 +17,55 @@ export class ZipParser implements parser.Parser {
             throw 'cannot find EOCD'
         }
 
+        const that = this
         const eocd = this.parseEOCD(p, pos, buffer.byteLength)
         const cd = p.createRegion('C', p.num.cdoffset, p.num.cdsize, 'CD', 'central directory')
-/*    
-        const signature = p.createRegion('signature', 0, 4, [0x50, 0x4b, 0x03, 0x04])
-        const version = p.createRegion('version', 'Version needed to extract (minimum)', 4, 6)
-        const gp = p.createRegion('general purpose', 6, 8)
-        const method = p.createRegion('method', 'Compression method; e.g. none = 0, DEFLATE = 8 (or "\0x08\0x00")', 8, 10)
-        const mtime = p.createRegion('mtime', 10, 12)
-        const mdate = p.createRegion('mdate', 12, 14)
-        const crc = p.createRegion('crc32', 14, 18)
-        const compressedSize = p.createRegion('compressedSize', 18, 22)
-        const uncompressedSize = p.createRegion('uncompressedSize', 22, 26)
-        const filenameLength = p.createRegion('filenameLength', 26, 28)
-        const extraFieldLength = p.createRegion('extra field length', 28, 30)
-        const filename = p.createRegion('filename', 30, 30 + Number(filenameLength.value))
-        const extra = p.createRegion('extra', 30 + Number(filenameLength.value), 30 + Number(filenameLength.value) + Number(extraFieldLength.value))
-*/
+        cd.subRegions = new Array(p.num.cdrecords)
+        cd.subRegionFetcher = function (index: number) {
+            if (cd.subRegions === undefined) {
+                throw 'not possbile'
+            }
+            if (cd.subRegions[index] !== undefined) {
+                return cd.subRegions[index]
+            }
+            
+            let lastKnownIndex = -1
+            let lastEndPos = cd.startPos
+            for (let i = index - 1; i >= 0; i--) {
+                if (cd.subRegions[i] !== undefined) {
+                    lastKnownIndex = i
+                    lastEndPos = cd.subRegions[i].endPos
+                }
+            }
+
+            for (let i = lastKnownIndex; i < index - 1; i++) {
+                // cd record length = 46 + n + m + k; n, m, k = uint16(arr, 28, 30, 32)
+                const n = util.parseValue(buffer, lastEndPos + 28, lastEndPos + 30, false, false)
+                const m = util.parseValue(buffer, lastEndPos + 30, lastEndPos + 32, false, false)
+                const k = util.parseValue(buffer, lastEndPos + 32, lastEndPos + 34, false, false)
+                lastEndPos += 46 + Number(n) + Number(m) + Number(k)
+            }
+
+            return that.parseCD(p, lastEndPos)
+        }
+
+        const lf = p.createRegion('C', 0, p.num.cdoffset, 'LocalFiles', '')
+        lf.subRegions = new Array(p.num.cdrecords)
+        lf.subRegionFetcher = function (index: number) {
+            if (cd.subRegions === undefined || cd.subRegionFetcher === undefined) {
+                throw 'not possible'
+            }
+            let cdr = cd.subRegions[index]
+            if (cdr === undefined) {
+                cdr = cd.subRegionFetcher(index)
+            }
+            
+            const pos = p.getNumber(cdr.subRegions, 'localHeaderOffset')
+            return that.parseLocalFile(p, pos)
+        }
+
         return [
-            cd, eocd
+            lf, cd, eocd
         ]
     }
 
@@ -53,5 +83,60 @@ export class ZipParser implements parser.Parser {
             p.createRegion('S', offset + 22, p.num['commentLength'], 'comment')
         ]
         return eocd
+    }
+
+    // parse one cd record
+    parseCD(p: parser.ParseHelper, offset: number) {
+        const cd = p.createRegion('C', offset, offset + 46, 'CD', 'central directory record')
+        cd.subRegions = [
+            p.createRegion('G', offset,      4, 'signature', '', p.CV([0x50, 0x4b, 0x01, 0x02])),
+            p.createRegion('N', offset + 4,  2, 'version'),
+            p.createRegion('N', offset + 6,  2, 'versionMin'),
+            p.createRegion('N', offset + 8,  2, 'generalPurpose'),
+            p.createRegion('N', offset + 10, 2, 'compressionMethod'),
+            p.createRegion('N', offset + 12, 2, 'mtime'),
+            p.createRegion('N', offset + 14, 2, 'mdate'),
+            p.createRegion('N', offset + 16, 4, 'crc32'),
+            p.createRegion('N', offset + 20, 4, 'compressedSize'),
+            p.createRegion('N', offset + 24, 4, 'uncompressedSize'),
+            p.createRegion('N', offset + 28, 2, 'filenameLength'),
+            p.createRegion('N', offset + 30, 2, 'extraFieldLength'),
+            p.createRegion('N', offset + 32, 2, 'commentLength'),
+            p.createRegion('N', offset + 34, 2, 'diskNum'),
+            p.createRegion('N', offset + 36, 2, 'internalAttr'),
+            p.createRegion('N', offset + 38, 4, 'externalAttr'),
+            p.createRegion('N', offset + 42, 4, 'localHeaderOffset'),
+            p.createRegion('S', offset + 46, p.num.filenameLength, 'filename'),
+            p.createRegion('G', -1,          p.num.extraFieldLength, 'extraField'),
+            p.createRegion('S', -1,          p.num.commentLength, 'comment'),
+        ]
+        cd.endPos = p.position
+        cd.strValue = p.regionCache.filename.strValue
+        
+        return cd
+    }
+
+    parseLocalFile(p: parser.ParseHelper, offset: number) {
+        const f = p.createRegion('C', offset, offset + 30, 'FILE', 'local file record')
+        f.subRegions = [
+            p.createRegion('G', offset,      4, 'signature', '', p.CV([0x50, 0x4b, 0x03, 0x04])),
+            p.createRegion('N', offset + 4,  2, 'version'),
+            p.createRegion('N', offset + 6,  2, 'generalPurpose'),
+            p.createRegion('N', offset + 8,  2, 'compressionMethod'),
+            p.createRegion('N', offset + 10, 2, 'mtime'),
+            p.createRegion('N', offset + 12, 2, 'mdate'),
+            p.createRegion('N', offset + 14, 4, 'crc32'),
+            p.createRegion('N', offset + 18, 4, 'compressedSize'),
+            p.createRegion('N', offset + 22, 4, 'uncompressedSize'),
+            p.createRegion('N', offset + 26, 2, 'filenameLength'),
+            p.createRegion('N', offset + 28, 2, 'extraFieldLength'),
+            p.createRegion('S', offset + 30, p.num.filenameLength, 'filename'),
+            p.createRegion('G', -1,          p.num.extraFieldLength, 'extraField'),
+            p.createRegion('G', -1,          p.num.compressedSize, 'compressedData'),
+        ]
+        f.endPos = p.position
+        f.strValue = p.regionCache.filename.strValue
+        
+        return f
     }
 }
