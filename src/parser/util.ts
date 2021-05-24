@@ -2,13 +2,20 @@ export function ensureLength(buf: ArrayBuffer, len: number, start: number = 0) {
     if (buf.byteLength < start + len) throw Error('invalid ico file')
 }
 
-export function ensureContent(buf: ArrayBuffer, start: number, data: number[]) {
+export function checkContent(buf: ArrayBuffer, start: number, data: number[]) {
     const arr1 = new Uint8Array(data)
     const arr2 = new Uint8Array(buf, start, data.length)
     for (let i = 0; i < data.length; i++) {
         if (arr1[i] !== arr2[i]) {
-            throw Error('fixed content mismatch')
+            return false
         }
+    }
+    return true
+}
+
+export function ensureContent(buf: ArrayBuffer, start: number, data: number[]) {
+    if (!checkContent(buf, start, data)) {
+        throw Error('fixed content mismatch')
     }
 }
 

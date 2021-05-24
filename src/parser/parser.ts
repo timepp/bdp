@@ -24,9 +24,12 @@ export class ParseHelper {
     }
 
     createRegion(type: dom.RegionType, pos: number, length: number, ID:string, description?:string, callback?:(r:dom.Region)=>void) : dom.Region {
-        const startPos = pos == -1? this.position : pos
+        if (pos === -1) {
+            pos = this.position
+        }
+        
         const r: dom.Region = {
-            ID, type, description: description || '', startPos, endPos: startPos + length, endian: this.endian
+            ID, type, description: description || '', startPos:pos, endPos: pos + length, endian: this.endian
         }
 
         switch (type) {
