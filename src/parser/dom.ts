@@ -1,6 +1,14 @@
 // A binary file parse result to a list of pieces of regions (can be overlap), each has the format like below
 
-export type RegionType = 'N' | 'n' | 'S' | 'G' | 'C'
+export type RegionType = 
+      'N'  // general unsigned number
+    | 'n'  // general signed number
+    | 'P'  // unsigned number represents pointer/offset
+    | 'L'  // unsigned number represents length/size
+    | 'S'  // general string
+    | 's'  // (possibly) null-terminated string
+    | 'G'  // general non-typed data
+    | 'C'  // compound
 
 export enum Endian { BE, LE }
 

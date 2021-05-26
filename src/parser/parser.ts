@@ -27,13 +27,16 @@ export class ParseHelper {
         if (pos === -1) {
             pos = this.position
         }
-        
+
         const r: dom.Region = {
             ID, type, description: description || '', startPos:pos, endPos: pos + length, endian: this.endian
         }
 
+        const d = new TextDecoder()
         switch (type) {
             case 'N':
+            case 'P':
+            case 'L':
                 r.numValue = util.parseValue(this.buffer, pos, pos + length, this.endian === dom.Endian.BE, false)
                 this.num[ID] = Number(r.numValue)
                 break
@@ -42,8 +45,11 @@ export class ParseHelper {
                 this.num[ID] = Number(r.numValue)
                 break
             case 'S':
-                const d = new TextDecoder()
                 r.strValue = d.decode(this.buffer.slice(pos, pos + length))
+                break
+            case 's':
+                // possibly null terminated string
+                r.strValue = d.decode(this.buffer.slice(pos, pos + length)).split('\0')[0]
                 break
             case 'G':
             case 'C':

@@ -16,7 +16,8 @@ table.data_view td.highlight {
 
 li {
     font-family: monospace;
-    cursor: pointer
+    cursor: pointer;
+    background-color: white;
 }
 
 li.highlight {
@@ -27,6 +28,7 @@ ul {
     margin-top: 0;
     font-family: monospace;
     list-style-type:none;
+    background-color: white;
 }
 
 td.tree {
@@ -72,3 +74,10 @@ td.view {
   .active {
     display: block;
   }
+
+.description {
+    margin: 10px;
+    padding: 10px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: lightgoldenrodyellow;
+}

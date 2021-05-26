@@ -2,6 +2,7 @@ import * as parser from './parser/parser.js'
 import * as ico from './parser/ico.js'
 import {PeParser} from './parser/pe.js'
 import { ZipParser } from './parser/zip.js'
+import { RiffParser } from './parser/riff.js'
 
 const parsers: {
     [id:string]: parser.Parser
@@ -11,6 +12,7 @@ export function init() {
     parsers.ico = new ico.IcoParser()
     parsers.zip = new ZipParser()
     parsers.pe = new PeParser()
+    parsers.riff = new RiffParser()
 }
 
 export async function parse(buffer: Blob, filename: string, forceType?: string) {

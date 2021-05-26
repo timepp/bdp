@@ -1,7 +1,8 @@
 import * as dom from './parser/dom.js'
+import * as util from './parser/util.js'
 
 type Highlight = {
-    color: string,
+    color: [number, number, number],
     start: number,
     end: number
 }
@@ -12,11 +13,13 @@ export class Visualizer {
     tdOffset: HTMLTableCellElement[]
     tdData: HTMLTableCellElement[][]
     tdText: HTMLTableCellElement[]
+    desc: HTMLElement
     columns: number
     rows: number
     offset: number
     highlights: Highlight[]
-    highlightLI?: HTMLLIElement
+    highlightLI?: HTMLElement
+    
 
     constructor(e: Element, d: dom.FileDOM) {
         this.container = e
@@ -29,6 +32,7 @@ export class Visualizer {
         this.offset = 0
         this.highlights = []
         this.highlightLI = undefined
+        this.desc = document.createElement('div')
     }
 
     visualize () {
@@ -46,6 +50,9 @@ export class Visualizer {
         tr.appendChild(tdView)
         tbl.appendChild(tr)
         this.container.appendChild(tbl)
+
+        this.desc.classList.add('description')
+        this.container.appendChild(this.desc)
 
         this.createNavigateButtons(tdView)
 
@@ -146,6 +153,8 @@ export class Visualizer {
         } else if (r.strValue !== undefined) {
             text += ' ' + r.strValue
         }
+        const span = document.createElement('span')
+        span.textContent = text
         li.appendChild(document.createTextNode(text))
 
         if (r.subRegions !== undefined) {
@@ -165,14 +174,20 @@ export class Visualizer {
             if (that.highlightLI) {
                 that.highlightLI.classList.remove('highlight')
             }
-            that.highlightLI = l as HTMLLIElement
+            that.highlightLI = l
             that.highlightLI.classList.add('highlight')
-            that.highlights = [{
-                    color: '', // no use
-                    start: l.s,
-                    end: l.e
-                }]
+
+            const r = l.region as dom.Region
+            that.highlights = []
+            if (r.subRegions) {
+                for (const subR of r.subRegions) {
+                    if (subR !== undefined)
+                        that.highlights.push({color: that.getColorForDataType(subR.type), start: subR.startPos, end: subR.endPos})
+                }
+            }
+            that.highlights.push({color: that.getColorForDataType(r.type), start: r.startPos, end: r.endPos})
             that.refresh(that.getPage(l.s))
+            that.desc.textContent = l.region.description
 
             if (l.ul) {
                 l.ul.classList.toggle("active");
@@ -267,6 +282,8 @@ export class Visualizer {
             this.tdOffset[i].textContent = offsetText
 
             let text = ''
+            let dimmColor = false
+            let lastRangeIndex = -1
             for (let j = 0; j < this.columns; j++) {
                 const index = i * this.columns + j
                 const td = this.tdData[i][j]
@@ -274,17 +291,35 @@ export class Visualizer {
                     const c = d[index]
                     text += (c >= 0x20 && c < 0x80)? String.fromCharCode(c) : '·'
                     this.tdData[i][j].textContent = c.toString(16).padStart(2, '0')
-                    for (const h of this.highlights) {
-                        if (offset + index >= h.start && offset + index < h.end) {
-                            td.classList.add('highlight')
-                        } else {
-                            td.classList.remove('highlight')
+                    const rangeIndex = this.highlights.findIndex(v => offset + index >= v.start && offset + index < v.end)
+                    if (rangeIndex >= 0) {
+                        if (lastRangeIndex !== -1 && lastRangeIndex != rangeIndex) {
+                            if (this.isSameColor(this.highlights[lastRangeIndex].color, this.highlights[rangeIndex].color)) {
+                                dimmColor = !dimmColor
+                                console.log('dim color: ', dimmColor)
+                            } else {
+                                dimmColor = false
+                            }
                         }
+                        lastRangeIndex = rangeIndex
+
+                        let color = this.highlights[rangeIndex].color
+                        if (dimmColor) {
+                            let [h, s, l] = util.rgbToHsl(...color)
+                            l += (1-l) / 2
+                            color = util.hslToRgb(h, s, l)
+                        }
+
+                        const [r, g, b] = color
+                        td.style.backgroundColor = `rgb(${r}, ${g}, ${b})`
+                    }
+                    else {
+                        td.style.backgroundColor = '#FFFFFF'
                     }
                 } else {
                     text += ' '
                     td.textContent = ''
-                    td.classList.remove('highlight')
+                    td.style.backgroundColor = '#FFFFFF'
                 }
             }
 
@@ -315,5 +350,24 @@ export class Visualizer {
         const e = document.createElement(tag)
         e.classList.add(...classes)
         return e
+    }
+
+    isSameColor(c1: [number, number, number], c2: [number, number, number]) {
+        return c1[0] === c2[0] && c1[1] === c2[1] && c1[2] === c2[2]
+    }
+
+    getColorForDataType(type: dom.RegionType): [number, number, number] {
+        // TODO: theme support
+        const theme : {[id:string]: [number, number, number]} = {
+            N: [0xFF, 0x88, 0xDC],
+            n: [0xFF, 0x88, 0xDC],
+            S: [0x30, 0xFB, 0x80],
+            s: [0x30, 0xFB, 0x80],
+            P: [0xDB, 0x90, 0x93],
+            L: [0x00, 0xBF, 0xFF],
+            C: [0xA0, 0xA0, 0x80],
+            G: [0xA0, 0xA0, 0xA0]
+        }
+        return theme[type]
     }
 }

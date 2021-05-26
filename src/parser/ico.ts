@@ -21,14 +21,14 @@ export class IcoParser implements parser.Parser {
             const dir = p.createRegion('C', pos, 16, 'iconDirectory')
             const whInterpreter = function (r: dom.Region) { if (r.numValue === 0n) r.numValue = 256n }
             dir.subRegions = [
-                p.createRegion('N', pos,      1, 'width',         'image width in pixels', whInterpreter),
-                p.createRegion('N', pos + 1,  1, 'height',        'image height in pixels', whInterpreter),
-                p.createRegion('N', pos + 2,  1, 'paletteNumber', 'number of colors in the color palette'),
-                p.createRegion('N', pos + 3,  1, 'reserved',      'should be 0'),
-                p.createRegion('N', pos + 4,  2, 'planes',        'color planes'),
-                p.createRegion('N', pos + 6,  2, 'bits',          'bits per pixel'),
-                p.createRegion('N', pos + 8,  4, 'size',          'image size in bytes'),
-                p.createRegion('N', pos + 12, 4, 'offset',        'offset of the image data')
+                p.createRegion('N', pos, 1, 'width',         'image width in pixels', whInterpreter),
+                p.createRegion('N', -1,  1, 'height',        'image height in pixels', whInterpreter),
+                p.createRegion('N', -1,  1, 'paletteNumber', 'number of colors in the color palette'),
+                p.createRegion('N', -1,  1, 'reserved',      'should be 0'),
+                p.createRegion('N', -1,  2, 'planes',        'color planes'),
+                p.createRegion('N', -1,  2, 'bits',          'bits per pixel'),
+                p.createRegion('N', -1,  4, 'size',          'image size in bytes'),
+                p.createRegion('N', -1,  4, 'offset',        'offset of the image data')
             ]
 
             dir.description =  `${p.num['width']}x${p.num['height']} ${p.num['bits']} bits`
