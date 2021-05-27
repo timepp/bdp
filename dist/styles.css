@@ -1,5 +1,5 @@
 table.data_view {
-    font-family: monospace;
+    font-family: consolas,monospace;
 }
 
 table.data_view td.text {
@@ -26,7 +26,7 @@ li.highlight {
 
 ul {
     margin-top: 0;
-    font-family: monospace;
+    font-family: consolas,monospace;
     list-style-type:none;
     background-color: white;
 }

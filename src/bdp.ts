@@ -3,6 +3,7 @@ import * as ico from './parser/ico.js'
 import {PeParser} from './parser/pe.js'
 import { ZipParser } from './parser/zip.js'
 import { RiffParser } from './parser/riff.js'
+import { TTFParser } from './parser/ttf.js'
 
 const parsers: {
     [id:string]: parser.Parser
@@ -13,6 +14,7 @@ export function init() {
     parsers.zip = new ZipParser()
     parsers.pe = new PeParser()
     parsers.riff = new RiffParser()
+    parsers.ttf = new TTFParser()
 }
 
 export async function parse(buffer: Blob, filename: string, forceType?: string) {
