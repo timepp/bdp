@@ -1,9 +1,35 @@
-import { off } from 'node:process'
 import * as dom from './dom.js'
 import * as parser from './parser.js'
 import * as util from './util.js'
 
 export class PeParser implements parser.Parser {
+    pe32Plus = false // whether PE32+
+    sections: {name:string, rva:number, size:number, offset:number}[] = []
+    dataDirectories : {name:string, rva:number, size:number}[] = []
+
+    machineMap: {[id:number]:string} = {
+        0:      "applicable to any machine type",
+        0x1d3:  "Matsushita AM33",
+        0x8664: "x64",
+        0x1c0:  "ARM little endian",
+        0xebc:  "EFI byte code",
+        0x14c:  "x86 (i386)",
+        0x200:  "Intel Itanium processor family",
+        0x9041: "Mitsubishi M32R little endian",
+        0x266:  "MIPS16",
+        0x366:  "MIPS with FPU",
+        0x466:  "MIPS16 with FPU",
+        0x1f0:  "Power PC little endian",
+        0x1f1:  "Power PC with floating point support",
+        0x166:  "MIPS little endian",
+        0x1a2:  "Hitachi SH3",
+        0x1a3:  "Hitachi SH3 DSP",
+        0x1a6:  "Hitachi SH4",
+        0x1a8:  "Hitachi SH5",
+        0x1c2:  "Thumb",
+        0x169:  "MIPS little-endian WCE v2"
+    }
+
     isSupportedFile(filename: string, ext: string) {
         return ['exe', 'dll', 'scr', 'sys', 'ocx', 'mui', 'efi', 'drv', 'cpl', 'acm', 'ax', 'tsp'].indexOf(ext) >= 0
     }
@@ -27,7 +53,7 @@ export class PeParser implements parser.Parser {
             coffOffset = p.position
         }
 
-        const coff = this.parseCOFF(p, coffOffset)
+        const coff = this.parseCOFFHeader(p, coffOffset)
         result.push(coff)
 
         if (p.num.SizeOfOptionalHeader > 0) {
@@ -36,19 +62,24 @@ export class PeParser implements parser.Parser {
         }
 
         const numberOfSections = p.getNumber(coff.subRegions, 'NumberOfSections')
-        const sections = this.parseSections(p, p.position, numberOfSections)
-        result.push(sections)
+        const [sectionTable, sections] = this.parseSections(p, p.position, numberOfSections)
+        result.push(sectionTable, sections)
+
+        // now we can parse other data (import table, etc) based on RVA of sections and RVA of data directory entries
+        result.push(...this.parseOtherContent(p))
 
         return result
     }
 
     parseSections(p: parser.ParseHelper, offset: number, size: number) {
-        const sections = p.createRegion('C', offset, size * 40, 'Sections')
+        const sectionTable = p.createRegion('C', offset, size * 40, 'SectionTable')
+        sectionTable.subRegions = []
+        const sections = p.createRegion('C', 0, 0, 'Sections')
         sections.subRegions = []
         for (let i = 0; i < size; i++) {
-            const section = p.createRegion('C', offset + i * 40, 40, 'Section')
-            const s = section.startPos
-            section.subRegions = [
+            const sectionInfo = p.createRegion('C', offset + i * 40, 40, 'SectionInfo')
+            const s = sectionInfo.startPos
+            sectionInfo.subRegions = [
                 p.createRegion('s', s,  8, 'Name', 'An 8-byte, null-padded UTF-8 encoded string. If the string is exactly 8 characters long, there is no terminating null. For longer names, this field contains a slash (/) that is followed by an ASCII representation of a decimal number that is an offset into the string table. Executable images do not use a string table and do not support section names longer than 8 characters. Long names in object files are truncated if they are emitted to an executable file.'),
                 p.createRegion('L', -1, 4, 'VirtualSize', 'The total size of the section when loaded into memory. If this value is greater than SizeOfRawData, the section is zero-padded. This field is valid only for executable images and should be set to zero for object files.'),
                 p.createRegion('P', -1, 4, 'VirtualAddress', 'For executable images, the address of the first byte of the section relative to the image base when the section is loaded into memory. For object files, this field is the address of the first byte before relocation is applied; for simplicity, compilers should set this to zero. Otherwise, it is an arbitrary value that is subtracted from offsets during relocation.'),
@@ -60,29 +91,115 @@ export class PeParser implements parser.Parser {
                 p.createRegion('L', -1, 2, 'NumberOfLinenumbers', 'The number of line-number entries for the section. This value should be zero for an image because COFF debugging information is deprecated.'),
                 p.createRegion('N', -1, 4, 'Characteristics', 'The flags that describe the characteristics of the section. For more information, see section 4.1, “Section Flags.”'),
             ]
-            section.strValue = p.regionCache['Name'].strValue
-            sections.subRegions.push(section)
+            sectionInfo.strValue = p.regionCache['Name'].strValue
+            sectionTable.subRegions.push(sectionInfo)
+            this.sections.push({name: (sectionInfo.strValue || ''), rva: p.num.VirtualAddress, size:p.num.VirtualSize, offset:p.num.PointerToRawData})
+
+            if (p.num.PointerToRawData > 0) {
+                const section = p.createRegion('G', p.num.PointerToRawData, p.num.SizeOfRawData, 'Section')
+                section.strValue = sectionInfo.strValue
+                sections.subRegions.push(section)
+            }
         }
 
-        return sections
+        return [sectionTable, sections]
     }
 
-    parseCOFF(p: parser.ParseHelper, offset: number) {
-        const coff = p.createRegion('C', offset, 20, 'COFF')
+    parseOtherContent(p:parser.ParseHelper) {
+        const content: dom.Region[] = []
+        for (const dd of this.dataDirectories) {
+            // find which section is the data in
+            for (const s of this.sections) {
+                if (dd.rva >= s.rva && dd.rva < s.rva + s.size) {
+                    const offset = dd.rva - s.rva + s.offset
+                    const size = dd.size
+                    if (dd.name === 'ImportTable') {
+                        content.push(this.parseImportTable(p, offset, size, dd.rva))
+                    } else {
+                        content.push(p.createRegion('G', offset, size, dd.name))
+                    }
+                    break
+                }
+            }
+        }
+        return content
+    }
+
+    parseImportTable(p:parser.ParseHelper, offset:number, length:number, rva:number) {
+        const section = p.createRegion('C', offset, length, 'ImportTable')
+        section.subRegions = []
+        section.description = "The import table is located at the rva specified in data directories in optional header. It is typically occupy the `.idata` section, but it's not always true."
+
+        const idt = p.createRegion('C', offset, 0, 'ImportDirectoryTable')
+        idt.subRegions = []
+        const lookupTables = p.createRegion('C', idt.endPos, 0, 'ImportLookupTables')
+        lookupTables.subRegions = []
+        for (let i = 0; ; i++) {
+            if (util.checkContent(p.buffer, offset + i * 20, new Array(20).fill(0))) {
+                idt.endPos = offset + i * 20 + 20
+                break
+            }
+            const idtEntry = p.createRegion('C', offset + i * 20, 20, 'ImportDirectoryEntry')
+            idtEntry.subRegions = [
+                p.createRegion('N', offset + i * 20, 4, 'ImportLookupTableRVA'),
+                p.createRegion('N', -1, 4, 'TimeStamp'),
+                p.createRegion('N', -1, 4, 'ForwarderChain'),
+                p.createRegion('N', -1, 4, 'NameRVA'),
+                p.createRegion('N', -1, 4, 'ImportAddressTableRVA')
+            ]
+            idtEntry.strValue = util.parseNullTerminatedString(p.buffer, p.num.NameRVA - rva + offset)
+            idt.subRegions.push(idtEntry)
+
+            const L = this.pe32Plus ? 8 : 4
+            const lookupTableOffset = p.num.ImportAddressTableRVA - rva + offset
+            const lookupTable = p.createRegion('C', lookupTableOffset, 0, 'ImportLookupTable')
+            lookupTable.subRegions = []
+            lookupTable.strValue = idtEntry.strValue
+            let pos = lookupTableOffset
+            for (let j = 0; ; j++) {
+                if (util.checkContent(p.buffer, pos + j * L, new Array(L).fill(0))) {
+                    lookupTable.endPos = pos + j * L + L
+                    break
+                }
+                const lookupEntry = p.createRegion('N', pos + j * L, L, 'ImportLookupEntry')
+                const entryRva = Number(lookupEntry.numValue) & 0x7fffffff
+                lookupEntry.strValue = util.parseNullTerminatedString(p.buffer, entryRva - rva + offset + 2)
+                lookupTable.subRegions.push(lookupEntry)
+            }
+            lookupTables.subRegions.push(lookupTable)
+            lookupTables.endPos = lookupTable.endPos
+        }
+
+        const hintNameTable = p.createRegion('G', lookupTables.endPos, length - (lookupTables.endPos - offset), 'HintNameTable')
+
+        section.subRegions.push(idt, lookupTables, hintNameTable)
+        return section
+    }
+
+    parseCOFFHeader(p: parser.ParseHelper, offset: number) {
+        const coff = p.createRegion('C', offset, 20, 'COFFHeader')
         coff.subRegions = [
-            p.createRegion('N', offset, 2, 'Machine'),
+            p.createRegion('N', offset, 2, 'Machine', 'The number that identifies the type of target machine. '),
             p.createRegion('L', -1,     2, 'NumberOfSections'),
-            p.createRegion('N', -1,     4, 'TimeDateStamp'),
-            p.createRegion('P', -1,     4, 'PointerToSymbolTable'),
-            p.createRegion('L', -1,     4, 'NumberOfSymbols'),
-            p.createRegion('L', -1,     2, 'SizeOfOptionalHeader'),
-            p.createRegion('N', -1,     2, 'Characteristics'),
+            p.createRegion('N', -1,     4, 'TimeDateStamp', 'The low 32 bits of the number of seconds since 00:00 January 1, 1970 (a C run-time time_t value), that indicates when the file was created.'),
+            p.createRegion('P', -1,     4, 'PointerToSymbolTable', 'The file offset of the COFF symbol table, or zero if no COFF symbol table is present. This value should be zero for an image because COFF debugging information is deprecated.'),
+            p.createRegion('L', -1,     4, 'NumberOfSymbols', 'The number of entries in the symbol table. This data can be used to locate the string table, which immediately follows the symbol table. This value should be zero for an image because COFF debugging information is deprecated.'),
+            p.createRegion('L', -1,     2, 'SizeOfOptionalHeader', 'The size of the optional header, which is required for executable files but not for object files. This value should be zero for an object file. For a description of the header format, see section 3.4, “Optional Header (Image Only).”'),
+            p.createRegion('N', -1,     2, 'Characteristics', 'The flags that indicate the attributes of the file. For specific flag values, see section 3.3.2, “Characteristics.”'),
         ]
+        coff.subRegions[0].interpretedValue = this.machineMap[Number(coff.subRegions[0].numValue)]
+        coff.subRegions[0].description += JSON.stringify(this.machineMap, null, 2)
         return coff
     }
 
     parseOptionalHeader(p: parser.ParseHelper, offset: number, length: number) {
         const coff = p.createRegion('C', offset, length, 'OptionalHeader')
+        const magic = Number(util.parseValue(p.buffer, offset, offset + 2, false, false))
+        this.pe32Plus = magic === 0x20b
+
+        // for some fields their length varies between PE32 and PE32+, we use L to ref it
+        // (PE32+ has the same EXE file size limit 4GB, these 8 bytes numbers are actually refer to values when the image is loaded into memory)
+        const L = this.pe32Plus? 8 : 4 
         coff.subRegions = [
             p.createRegion('N', offset, 2, 'Magic'),
             p.createRegion('N', -1,     1, 'MajorLinkerVersion'),
@@ -92,9 +209,9 @@ export class PeParser implements parser.Parser {
             p.createRegion('L', -1,     4, 'SizeOfUninitializedData'),
             p.createRegion('P', -1,     4, 'AddressOfEntryPoint'),
             p.createRegion('N', -1,     4, 'BaseOfCode'),
-            p.createRegion('N', -1,     4, 'BaseOfData'),
+            p.createRegion('N', -1,     this.pe32Plus? 0: 4, 'BaseOfData'),
 
-            p.createRegion('N', -1,     4, 'ImageBase', 'The preferred address of the first byte of image when loaded into memory; must be a multiple of 64 K. The default for DLLs is 0x10000000. The default for Windows CE EXEs is 0x00010000. The default for Windows NT, Windows 2000, Windows XP, Windows 95, Windows 98, and Windows Me is 0x00400000.'),
+            p.createRegion('N', -1,     L, 'ImageBase', 'The preferred address of the first byte of image when loaded into memory; must be a multiple of 64 K. The default for DLLs is 0x10000000. The default for Windows CE EXEs is 0x00010000. The default for Windows NT, Windows 2000, Windows XP, Windows 95, Windows 98, and Windows Me is 0x00400000.'),
             p.createRegion('N', -1,     4, 'SectionAlignment', 'The alignment (in bytes) of sections when they are loaded into memory. It must be greater than or equal to FileAlignment. The default is the page size for the architecture.'),
             p.createRegion('N', -1,     4, 'FileAlignment', 'The alignment factor (in bytes) that is used to align the raw data of sections in the image file. The value should be a power of 2 between 512 and 64 K, inclusive. The default is 512. If the SectionAlignment is less than the architecture’s page size, then FileAlignment must match SectionAlignment.'),
             p.createRegion('N', -1,     2, 'MajorOperatingSystemVersion', 'The major version number of the required operating system.'),
@@ -110,10 +227,10 @@ export class PeParser implements parser.Parser {
             p.createRegion('N', -1,     4, 'CheckSum', 'The image file checksum. The algorithm for computing the checksum is incorporated into IMAGHELP.DLL. The following are checked for validation at load time: all drivers, any DLL loaded at boot time, and any DLL that is loaded into a critical Windows process.'),
             p.createRegion('N', -1,     2, 'Subsystem', 'The subsystem that is required to run this image. For more information, see “Windows Subsystem” later in this specification.'),
             p.createRegion('N', -1,     2, 'DllCharacteristics', 'For more information, see “DLL Characteristics” later in this specification.'),
-            p.createRegion('N', -1,     4, 'SizeOfStackReserve', 'The size of the stack to reserve. Only SizeOfStackCommit is committed; the rest is made available one page at a time until the reserve size is reached.'),
-            p.createRegion('N', -1,     4, 'SizeOfStackCommit', 'The size of the stack to commit.'),
-            p.createRegion('N', -1,     4, 'SizeOfHeapReserve', 'The size of the local heap space to reserve. Only SizeOfHeapCommit is committed; the rest is made available one page at a time until the reserve size is reached.'),
-            p.createRegion('N', -1,     4, 'SizeOfHeapCommit', 'The size of the local heap space to commit.'),
+            p.createRegion('N', -1,     L, 'SizeOfStackReserve', 'The size of the stack to reserve. Only SizeOfStackCommit is committed; the rest is made available one page at a time until the reserve size is reached.'),
+            p.createRegion('N', -1,     L, 'SizeOfStackCommit', 'The size of the stack to commit.'),
+            p.createRegion('N', -1,     L, 'SizeOfHeapReserve', 'The size of the local heap space to reserve. Only SizeOfHeapCommit is committed; the rest is made available one page at a time until the reserve size is reached.'),
+            p.createRegion('N', -1,     L, 'SizeOfHeapCommit', 'The size of the local heap space to commit.'),
             p.createRegion('N', -1,     4, 'LoaderFlags', 'Reserved, must be zero.'),
             p.createRegion('N', -1,     4, 'NumberOfRvaAndSizes', 'The number of data-directory entries in the remainder of the optional header. Each describes a location and size.'),
             this.parseDataDirectories(p, p.position, p.num.NumberOfRvaAndSizes)
@@ -149,6 +266,9 @@ export class PeParser implements parser.Parser {
                 p.createRegion('N', offset + i * 8 + 4, 4, 'size')
             ]
             dds.subRegions.push(dd)
+            if (p.num.size !== 0) {
+                this.dataDirectories.push({name: ddNames[i][0], rva: p.num.address, size:p.num.size})
+            }
         }
 
         return dds

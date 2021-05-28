@@ -19,7 +19,6 @@ export class Visualizer {
     offset: number
     highlights: Highlight[]
     highlightLI?: HTMLElement
-    
 
     constructor(e: Element, d: dom.FileDOM) {
         this.container = e
@@ -32,7 +31,7 @@ export class Visualizer {
         this.offset = 0
         this.highlights = []
         this.highlightLI = undefined
-        this.desc = document.createElement('div')
+        this.desc = document.createElement('pre')
     }
 
     visualize () {
@@ -149,13 +148,22 @@ export class Visualizer {
 
         let text = r.ID
         if (r.numValue !== undefined) {
-            text += ' ' + r.numValue
-        } else if (r.strValue !== undefined) {
+            text += ` 0x${r.numValue.toString(16)} (${r.numValue})`
+        }
+        if (r.strValue !== undefined) {
             text += ' ' + r.strValue
         }
+
         const span = document.createElement('span')
         span.textContent = text
         li.appendChild(document.createTextNode(text))
+
+        if (r.interpretedValue !== undefined) {
+            const iSpan = document.createElement('span')
+            iSpan.classList.add('interpreted')
+            iSpan.textContent = r.interpretedValue
+            li.appendChild(iSpan)
+        }
 
         if (r.subRegions !== undefined) {
             li.classList.add('caret')
@@ -277,13 +285,12 @@ export class Visualizer {
     refreshDataView (offset: number) {
         this.offset = offset
         const d = new Uint8Array(this.dom.buffer, offset)
+        let dimColor = false
+        let lastRangeIndex = -1
         for (let i = 0; i < this.rows; i++) {
             const offsetText = this.toHex(offset + i * this.columns)
             this.tdOffset[i].textContent = offsetText
-
             let text = ''
-            let dimmColor = false
-            let lastRangeIndex = -1
             for (let j = 0; j < this.columns; j++) {
                 const index = i * this.columns + j
                 const td = this.tdData[i][j]
@@ -295,16 +302,15 @@ export class Visualizer {
                     if (rangeIndex >= 0) {
                         if (lastRangeIndex !== -1 && lastRangeIndex != rangeIndex) {
                             if (this.isSameColor(this.highlights[lastRangeIndex].color, this.highlights[rangeIndex].color)) {
-                                dimmColor = !dimmColor
-                                console.log('dim color: ', dimmColor)
+                                dimColor = !dimColor
                             } else {
-                                dimmColor = false
+                                dimColor = false
                             }
                         }
                         lastRangeIndex = rangeIndex
 
                         let color = this.highlights[rangeIndex].color
-                        if (dimmColor) {
+                        if (dimColor) {
                             let [h, s, l] = util.rgbToHsl(...color)
                             l += (1-l) / 2
                             color = util.hslToRgb(h, s, l)
@@ -365,8 +371,8 @@ export class Visualizer {
             s: [0x30, 0xFB, 0x80],
             P: [0xE0, 0xE0, 0x80],
             L: [0x00, 0xBF, 0xFF],
-            C: [0xFF, 0xA0, 0x80],
-            G: [0xC0, 0xC0, 0xC0]
+            C: [0xD0, 0xD0, 0xD0],
+            G: [0xF0, 0xF0, 0xC0]
         }
         return theme[type]
     }

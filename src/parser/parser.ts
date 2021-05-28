@@ -23,6 +23,18 @@ export class ParseHelper {
         this.endian = dom.Endian.LE
     }
 
+    createCompoundRegion(pos: number, length: number, ID: string, description:string = '', subRegions:dom.Region[] = []) {
+        if (pos === -1) {
+            pos = this.position
+        }
+
+        const r: dom.Region = {
+            ID, type:'C', description: description, startPos: pos, endPos: pos + length, subRegions
+        }
+
+        return r
+    }
+
     createRegion(type: dom.RegionType, pos: number, length: number, ID:string, description?:string, callback?:(r:dom.Region)=>void) : dom.Region {
         if (pos === -1) {
             pos = this.position
@@ -52,7 +64,9 @@ export class ParseHelper {
                 r.strValue = d.decode(this.buffer.slice(pos, pos + length)).split('\0')[0]
                 break
             case 'G':
+                break
             case 'C':
+                r.subRegions = []
                 break
         }
 

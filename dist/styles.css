@@ -1,5 +1,5 @@
 table.data_view {
-    font-family: consolas,monospace;
+    font-family: "Cascadia Code", consolas, monospace;
 }
 
 table.data_view td.text {
@@ -26,7 +26,7 @@ li.highlight {
 
 ul {
     margin-top: 0;
-    font-family: consolas,monospace;
+    font-family: "Cascadia Code", consolas, monospace;
     list-style-type:none;
     background-color: white;
 }
@@ -44,6 +44,10 @@ div.tree {
 
 td.view {
     padding-left: 20px;
+}
+
+span.interpreted {
+    color: blue
 }
 
 /* Style the caret/arrow */
@@ -78,6 +82,5 @@ td.view {
 .description {
     margin: 10px;
     padding: 10px;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background-color: lightgoldenrodyellow;
 }

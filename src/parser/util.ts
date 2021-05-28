@@ -46,6 +46,17 @@ export function searchPattern(buf: ArrayBuffer, pattern: number[], forward: bool
     return -1
 }
 
+export function parseNullTerminatedString(buf: ArrayBuffer, start: number) {
+    const arr = new Uint8Array(buf)
+    for (let i = start; ; i++) {
+        if (arr[i] === 0) {
+            const decoder = new TextDecoder()
+            return decoder.decode(buf.slice(start, i))
+        }
+    }
+    return ''
+}
+
 export function parseValue(buf: ArrayBuffer, start: number, end: number, isBigEndian: boolean, isSigned: boolean) : bigint {
     const l = end - start
     const s = isBigEndian? start : end - 1

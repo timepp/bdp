@@ -1,4 +1,4 @@
-// A binary file parse result to a list of pieces of regions (can be overlap), each has the format like below
+// A "binary file parse result" is a list of regions (can be overlap), each has the format like below
 
 export type RegionType = 
       'N'  // general unsigned number
@@ -20,10 +20,11 @@ export type Region = {
     startPos: number,
     endPos: number,
 
-    // for region represents numbers
+    // values
     endian?: Endian,
     numValue?: bigint,
     strValue?: string,
+    interpretedValue?: string,
 
     // for compound region, this may be sparse to save memory, in such case the followed function object can be used to fetch value
     subRegions?: Region[]
