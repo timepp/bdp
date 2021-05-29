@@ -3,6 +3,7 @@ import * as util from './parser/util.js'
 
 type Highlight = {
     color: [number, number, number],
+    title: string,
     start: number,
     end: number
 }
@@ -24,7 +25,7 @@ export class Visualizer {
     rows: number
     offset: number
     highlights: Highlight[]
-    highlightLI?: HTMLElement
+    highlightLI?: RegionElement
 
     constructor(e: Element, d: dom.FileDOM) {
         this.container = e
@@ -145,11 +146,7 @@ export class Visualizer {
         }
     }
 
-    insertRegion (parent: HTMLUListElement, r: dom.Region) {
-        const li = document.createElement('li') as RegionElement
-        parent.appendChild(li)
-        li.region = r
-
+    getRegionDisplayText(r: dom.Region) {
         let text = r.ID
         if (r.numValue !== undefined) {
             text += ` 0x${r.numValue.toString(16)} (${r.numValue})`
@@ -157,10 +154,17 @@ export class Visualizer {
         if (r.strValue !== undefined) {
             text += ' ' + r.strValue
         }
+        return text
+    }
+
+    insertRegion (parent: HTMLUListElement, r: dom.Region) {
+        const li = document.createElement('li') as RegionElement
+        parent.appendChild(li)
+        li.region = r
 
         const span = document.createElement('span')
-        span.textContent = text
-        li.appendChild(document.createTextNode(text))
+        span.textContent = this.getRegionDisplayText(r)
+        li.appendChild(span)
 
         if (r.interpretedValue !== undefined) {
             const iSpan = document.createElement('span')
@@ -171,11 +175,6 @@ export class Visualizer {
 
         if (r.subRegions !== undefined) {
             li.classList.add('caret')
-            // const ul = document.createElement('ul')
-            // li.appendChild(ul)
-            // ul.classList.add('nested')
-            // li.ul = ul
-            // li.constructed = false
         }
     
         const that = this
@@ -198,10 +197,10 @@ export class Visualizer {
             if (r.subRegions) {
                 for (const subR of r.subRegions) {
                     if (subR !== undefined)
-                        that.highlights.push({color: that.getColorForDataType(subR.type), start: subR.startPos, end: subR.endPos})
+                        that.highlights.push({color: that.getColorForDataType(subR.type), start: subR.startPos, end: subR.endPos, title: that.getRegionDisplayText(subR)})
                 }
             }
-            that.highlights.push({color: that.getColorForDataType(r.type), start: r.startPos, end: r.endPos})
+            that.highlights.push({color: that.getColorForDataType(r.type), start: r.startPos, end: r.endPos, title: that.getRegionDisplayText(r)})
             that.refresh(that.getPage(r.startPos))
             that.desc.textContent = l.region.description
 
@@ -329,6 +328,7 @@ export class Visualizer {
 
                         const [r, g, b] = color
                         td.style.backgroundColor = `rgb(${r}, ${g}, ${b})`
+                        td.title = this.highlights[rangeIndex].title
                     }
                     else {
                         td.style.backgroundColor = '#FFFFFF'
