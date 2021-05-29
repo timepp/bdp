@@ -1,11 +1,18 @@
 # BDP (binary data parser)
 
-BDP aims to build a general purpose binary data parser framework to provide common facilities to parse/present binary data and to have a ability to easily add parser for particular data format.
+BDP aims to
 
-The background to this project was the attempt to invent a "binary data description language" similar to "BDDL"(http://www.binaryparser.com/sdk/doc/bddl.shtml).
-But after some investigation I found that it's hard to define that language which has the ability to handle arbitrary data format. For example, the "zip" format request the parser to lookup some special byte pattern to locate the so-called 'EOCD' record, this is really rare. Yes we can add that ability in a special syntax to the language. But we are still limited in front of future unknown tricky data formats (or unless we investigate almost all existing binary data format and make a union to all requirements).
+- build a general purpose binary data parser framework to provide common facilities to parse/present binary data and to have a ability to easily add parser for particular data format.
+- build a UI to properly display binary data by a tree structure.
+- provide enough pre-defined binary format parser to make it useful out-of-box.
 
-So instead of continuing the huge work for a big language definition, I went to the way that use javascript language to express the data format in the form of a writting a parser function. Common utilities and frameworks are well constructed so that for easy data format the parser function is still concise while ad-hoc complex logic can also be easily added for tricky data formats.
+## Background
+
+The background of this project was the attempt to invent a "binary data description language"  that can describe all possible binary format. (similar to [BDDL](http://www.binaryparser.com/sdk/doc/bddl.shtml)).
+
+After some investigation I found that it's hard to define such a language elegantly. For example, the "zip" format request the parser to lookup some special byte pattern to locate the so-called 'EOCD' record, this is really messy. To achieve this we need to introduce a special syntax to the language. After knowing some more similar cases, I realized that it's impossible to keep the language both "elegant" and "powerful enough".
+
+So I went to the way that use javascript language to express the data format in the form of a writting a parser function. Common utilities and frameworks can be well constructed so that for common data format the parser function is still concise, while rare complex logic can also be quickly handled by special ad-hoc code.
 
 below are the comparison between a possible "binary data description language" instance and the javascript parser for ICO file.
 
@@ -85,7 +92,7 @@ export class IcoParser implements parser.Parser {
 
 ## Features
 
-- Pure HTML and client javascript implemented, which can be host on any online/offline web page
+- Pure HTML and client javascript which can be host on any modern web page
 - Has the viewer to present tree view and hex view
 - Coloring on different field types (support color dimming to distinguish successive range with same type)
 - On-demand UI: only the top level tree structure is constructed, deeper level of tree nodes are constructed when user click parent node
