@@ -7,6 +7,12 @@ type Highlight = {
     end: number
 }
 
+interface RegionElement extends HTMLLIElement {
+    region: dom.Region,
+    startIndex: number,
+    endIndex: number
+}
+
 export class Visualizer {
     container: Element
     dom: dom.FileDOM
@@ -140,10 +146,8 @@ export class Visualizer {
     }
 
     insertRegion (parent: HTMLUListElement, r: dom.Region) {
-        const li = document.createElement('li')
+        const li = document.createElement('li') as RegionElement
         parent.appendChild(li)
-        li.s = r.startPos
-        li.e = r.endPos
         li.region = r
 
         let text = r.ID
@@ -167,25 +171,29 @@ export class Visualizer {
 
         if (r.subRegions !== undefined) {
             li.classList.add('caret')
-            const ul = document.createElement('ul')
-            li.appendChild(ul)
-            ul.classList.add('nested')
-            li.ul = ul
-            li.constructed = false
+            // const ul = document.createElement('ul')
+            // li.appendChild(ul)
+            // ul.classList.add('nested')
+            // li.ul = ul
+            // li.constructed = false
         }
     
         const that = this
         li.addEventListener("click", function(e) {
-            if (e.target !== e.currentTarget) return
+            if (that.getParentLI(e.target as HTMLElement) !== e.currentTarget) {
+                // do not handle event from child LIs
+                return
+            }
 
-            const l = e.target as HTMLElement
+            const l = e.currentTarget as RegionElement
+            console.log('item clicked, ', l)
             if (that.highlightLI) {
                 that.highlightLI.classList.remove('highlight')
             }
             that.highlightLI = l
             that.highlightLI.classList.add('highlight')
 
-            const r = l.region as dom.Region
+            const r = l.region
             that.highlights = []
             if (r.subRegions) {
                 for (const subR of r.subRegions) {
@@ -194,60 +202,63 @@ export class Visualizer {
                 }
             }
             that.highlights.push({color: that.getColorForDataType(r.type), start: r.startPos, end: r.endPos})
-            that.refresh(that.getPage(l.s))
+            that.refresh(that.getPage(r.startPos))
             that.desc.textContent = l.region.description
 
-            if (l.ul) {
-                l.ul.classList.toggle("active");
-                l.classList.toggle("caret-down");
-                if (!l.constructed) {
+            if (r.subRegions !== undefined) {
+                l.classList.toggle('caret-down')
+                let ul = l.getElementsByTagName('UL').item(0) as HTMLUListElement
+                console.log('ul:', ul)
+                if (ul !== null) {
+                    ul.classList.toggle('active')
+                } else { // not yet constructed
+                    ul = document.createElement('ul')
+                    ul.classList.add('nested', 'active')
+                    l.appendChild(ul)
                     
                     // if there are less than 100 sub regions, we construct them directly
                     // otherwise we use pseudo elements to wrap them
-                    if (l.region.subRegions.length < 100) {
-                        for (let i = 0; i < l.region.subRegions.length; i++) {
-                            let subRegion = l.region.subRegions[i]
-                            if (subRegion === undefined) {
+                    if (r.subRegions.length < 100) {
+                        for (let i = 0; i < r.subRegions.length; i++) {
+                            let subRegion = r.subRegions[i]
+                            if (subRegion === undefined && r.subRegionFetcher !== undefined) {
                                 // which means it's lazy init
-                                subRegion = l.region.subRegionFetcher(i)
+                                subRegion = r.subRegionFetcher(i)
                             }
-                            that.insertRegion(l.ul, subRegion)
+                            that.insertRegion(ul, subRegion)
                         }
                     } else {
-                        for (let i = 0; i < l.region.subRegions.length; i += 100) {
-                            const li = document.createElement('li')
-                            l.ul.appendChild(li)
-                            const endIndex = Math.min(l.region.subRegions.length, i + 100)
+                        for (let i = 0; i < r.subRegions.length; i += 100) {
+                            const li = document.createElement('li') as RegionElement
+                            ul.appendChild(li)
+                            const endIndex = Math.min(r.subRegions.length, i + 100)
                             li.textContent = `[${i}..${endIndex-1}]`
                             li.classList.add('caret')
                             li.startIndex = i
                             li.endIndex = endIndex
-                            li.region = l.region
-                            const ul = document.createElement('ul')
-                            li.appendChild(ul)
-                            ul.classList.add('nested')
-                            li.ul = ul
-                            li.constructed = false
+                            li.region = r
                             li.addEventListener("click", function (e) {
                                 if (e.target !== e.currentTarget) return
-                                const ll = e.target as HTMLElement
-                                ll.ul.classList.toggle("active")
+                                const ll = e.currentTarget as RegionElement
                                 ll.classList.toggle("caret-down")
-                                if (!ll.constructed) {
+                                let sul = ll.getElementsByTagName('UL').item(0) as HTMLUListElement
+                                if (sul) {
+                                    sul.classList.toggle('active')
+                                } else if (ll.region.subRegions !== undefined) {
+                                    sul = document.createElement('ul')
+                                    sul.classList.add('nested', 'active')
+                                    ll.appendChild(sul)
                                     for (let i = ll.startIndex; i < ll.endIndex; i++) {
                                         let subRegion = ll.region.subRegions[i]
-                                        if (subRegion === undefined) {
+                                        if (subRegion === undefined && ll.region.subRegionFetcher !== undefined) {
                                             subRegion = ll.region.subRegionFetcher(i)
                                         }
-                                        that.insertRegion(ll.ul, subRegion)
+                                        that.insertRegion(sul, subRegion)
                                     }
-                                    ll.constructed = true
                                 }
                             })
                         }
                     }
-
-                    l.constructed = true
                 }
             }
         })
@@ -350,6 +361,14 @@ export class Visualizer {
 
     getPage (x: number) {
         return Math.floor(x / (this.columns * this.rows))
+    }
+
+    getParentLI(x: HTMLElement | null) {
+        while (x) {
+            if (x.tagName === 'LI') return x
+            x = x.parentElement
+        }
+        return x
     }
 
     createElement(tag: string, classes: string | string[]) {
