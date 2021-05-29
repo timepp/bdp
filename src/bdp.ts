@@ -17,7 +17,7 @@ export function init() {
     parsers.ttf = new TTFParser()
 }
 
-export async function parse(buffer: Blob, filename: string, forceType?: string) {
+export function parse(buffer: ArrayBuffer, filename: string, forceType?: string) {
     const ext = filename.split('.').pop()?.toLowerCase() || ''
     let parser: parser.Parser | null = null
     if (forceType) {
@@ -32,21 +32,19 @@ export async function parse(buffer: Blob, filename: string, forceType?: string) 
         }
     }
 
-    const arr = await buffer.arrayBuffer()
-
     try {
         if (parser === null) {
             throw "couldn't find a parser"
         }
 
-        const r = parser.parse(arr)
+        const r = parser.parse(buffer)
         return {
-            buffer: arr, regions: r
+            buffer, regions: r
         }
     } catch (e) {
         console.log(e)
         return {
-            buffer: arr, regions: []
+            buffer, regions: []
         }
     }
 }
