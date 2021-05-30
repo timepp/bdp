@@ -29,6 +29,7 @@ ul {
     font-family: "Cascadia Code", consolas, monospace;
     list-style-type:none;
     background-color: white;
+    padding-inline-start: 20px;
 }
 
 td.tree {

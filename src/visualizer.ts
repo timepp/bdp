@@ -185,7 +185,7 @@ export class Visualizer {
             }
 
             const l = e.currentTarget as RegionElement
-            console.log('item clicked, ', l)
+
             if (that.highlightLI) {
                 that.highlightLI.classList.remove('highlight')
             }
@@ -207,7 +207,6 @@ export class Visualizer {
             if (r.subRegions !== undefined) {
                 l.classList.toggle('caret-down')
                 let ul = l.getElementsByTagName('UL').item(0) as HTMLUListElement
-                console.log('ul:', ul)
                 if (ul !== null) {
                     ul.classList.toggle('active')
                 } else { // not yet constructed
@@ -386,10 +385,10 @@ export class Visualizer {
         const theme : {[id:string]: [number, number, number]} = {
             N: [0xFF, 0x88, 0xDC],
             n: [0xFF, 0x88, 0xDC],
-            S: [0x30, 0xFB, 0x80],
-            s: [0x30, 0xFB, 0x80],
-            P: [0xE0, 0xE0, 0x80],
-            L: [0x00, 0xBF, 0xFF],
+            S: [0xE0, 0xE0, 0x80],
+            s: [0xE0, 0xE0, 0x80],
+            P: [0x00, 0xBF, 0xFF],
+            L: [0x30, 0xFB, 0x80],
             C: [0xD0, 0xD0, 0xD0],
             G: [0xF0, 0xF0, 0xC0]
         }

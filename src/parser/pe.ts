@@ -115,6 +115,10 @@ export class PeParser implements parser.Parser {
                     const size = dd.size
                     if (dd.name === 'ImportTable') {
                         content.push(this.parseImportTable(p, offset, size, dd.rva))
+                    } else if (dd.name === 'ExportTable') {
+                        content.push(this.parseExportTable(p, offset, size, dd.rva))
+                    } else if (dd.name === 'TLSTable') {
+                        content.push(this.parseTLSTable(p, offset, size, dd.rva))
                     } else {
                         content.push(p.createRegion('G', offset, size, dd.name))
                     }
@@ -123,6 +127,56 @@ export class PeParser implements parser.Parser {
             }
         }
         return content
+    }
+
+    parseExportTable(p:parser.ParseHelper, offset:number, length:number, rva:number) {
+        const tbl = p.createRegion('C', offset, length, 'ExportTable')
+        tbl.subRegions = []
+
+        const edt = p.createRegion('C', offset, 40, 'ExportDirectoryTable')
+        edt.subRegions = [
+            p.createRegion('N', offset, 4, 'ExportFlags',  'Reserved, must be 0.'),
+            p.createRegion('N', -1,     4, 'TimeDateStamp',  'The time and date that the export data was created.'),
+            p.createRegion('N', -1,     2, 'MajorVersion',  'The major version number. The major and minor version numbers can be set by the user.'),
+            p.createRegion('N', -1,     2, 'MinorVersion',  'The minor version number.'),
+            p.createRegion('P', -1,     4, 'NameRVA',  'The address of the ASCII string that contains the name of the DLL. This address is relative to the image base.'),
+            p.createRegion('N', -1,     4, 'OrdinalBase',  'The starting ordinal number for exports in this image. This field specifies the starting ordinal number for the export address table. It is usually set to 1.'),
+            p.createRegion('L', -1,     4, 'AddressTableEntries',  'The number of entries in the export address table.'),
+            p.createRegion('L', -1,     4, 'NumberOfNamePointers',  'The number of entries in the name pointer table. This is also the number of entries in the ordinal table.'),
+            p.createRegion('P', -1,     4, 'ExportAddressTableRVA',  'The address of the export address table, relative to the image base.'),
+            p.createRegion('P', -1,     4, 'NamePointerRVA',  'The address of the export name pointer table, relative to the image base. The table size is given by the Number of Name Pointers field.'),
+            p.createRegion('P', -1,     4, 'OrdinalTableRVA',  'The address of the ordinal table, relative to the image base.'),
+        ]
+        p.regionCache.NameRVA.interpretedValue = util.parseNullTerminatedString(p.buffer, p.num.NameRVA - rva + offset)
+
+        const eatAddr = p.num.ExportAddressTableRVA - rva + offset
+        const eat = p.createRegion('C', eatAddr, p.num.AddressTableEntries * 4, 'ExportAddressTable')
+        eat.subRegions = []
+        for (let i = 0; i < p.num.AddressTableEntries; i++) {
+            eat.subRegions.push(p.createRegion('P', eat.startPos + i * 4, 4, 'ExportRVA'))
+        }
+
+        const enptAddr = p.num.NamePointerRVA - rva + offset
+        const enpt = p.createRegion('C', enptAddr, p.num.NumberOfNamePointers * 4, 'ExportNamePointerTable')
+        enpt.subRegions = []
+        for (let i = 0; i < p.num.NumberOfNamePointers; i++) {
+            const np = p.createRegion('P', enpt.startPos + i * 4, 4, 'NamePointer')
+            np.interpretedValue = util.parseNullTerminatedString(p.buffer, p.num.NamePointer - rva + offset)
+            enpt.subRegions.push(np)
+        }
+
+        const ordinalAddr = p.num.OrdinalTableRVA - rva + offset
+        const eot = p.createRegion('C', ordinalAddr, p.num.NumberOfNamePointers * 2, 'ExportOrdinalTable')
+        eot.subRegions = []
+        for (let i = 0; i < p.num.NumberOfNamePointers; i++) {
+            const o = p.createRegion('N', eot.startPos + i * 2, 2, 'index')
+            eot.subRegions.push(o)
+        }
+
+        const nt = p.createRegion('G', eot.endPos, tbl.endPos - eot.endPos, 'ExportNameTable')
+
+        tbl.subRegions.push(edt, eat, enpt, eot, nt)
+        return tbl
     }
 
     parseImportTable(p:parser.ParseHelper, offset:number, length:number, rva:number) {
@@ -174,6 +228,20 @@ export class PeParser implements parser.Parser {
 
         section.subRegions.push(idt, lookupTables, hintNameTable)
         return section
+    }
+
+    parseTLSTable(p:parser.ParseHelper, offset:number, length: number, rva: number) {
+        const tls = p.createRegion('C', offset, length, 'TLSTable')
+        const L = this.pe32Plus? 8 : 4
+        tls.subRegions = [
+            p.createRegion('P', offset, L, 'RawDataStartVA', 'The starting address of the TLS template. The template is a block of data that is used to initialize TLS data. The system copies all of this data each time a thread is created, so it must not be corrupted. Note that this address is not an RVA; it is an address for which there should be a base relocation in the .reloc section.'),
+            p.createRegion('P', -1,     L, 'RawDataEndVA', 'The address of the last byte of the TLS, except for the zero fill. As with the Raw Data Start VA field, this is a VA, not an RVA.'),
+            p.createRegion('P', -1,     L, 'AddressOfIndex', 'The location to receive the TLS index, which the loader assigns. This location is in an ordinary data section, so it can be given a symbolic name that is accessible to the program.'),
+            p.createRegion('P', -1,     L, 'AddressOfCallbacks', 'The pointer to an array of TLS callback functions. The array is null-terminated, so if no callback function is supported, this field points to 4 bytes set to zero. For information about the prototype for these functions, see section 6.7.2, “TLS Callback Functions.”'),
+            p.createRegion('L', -1,     4, 'SizeOfZeroFill', 'The size in bytes of the template, beyond the initialized data delimited by the Raw Data Start VA and Raw Data End VA fields. The total template size should be the same as the total size of TLS data in the image file. The zero fill is the amount of data that comes after the initialized nonzero data.'),
+            p.createRegion('N', -1,     4, 'Characteristics', 'The four bits [23:20] describe alignment info.  Possible values are those defined as IMAGE_SCN_ALIGN_*, which are also used to describe alignment of section in object files.  The other 28 bits are reserved for future use.            '),
+        ]
+        return tls
     }
 
     parseCOFFHeader(p: parser.ParseHelper, offset: number) {
