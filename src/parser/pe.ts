@@ -106,6 +106,12 @@ export class PeParser implements parser.Parser {
     }
 
     parseOtherContent(p:parser.ParseHelper) {
+        const parsers : {[id:string]: (p:parser.ParseHelper, offset:number, length:number, rva:number) => dom.Region} = {
+            'ImportTable': this.parseImportTable,
+            'ExportTable': this.parseExportTable,
+            'TLSTable': this.parseTLSTable,
+            'ResourceTable': this.parseResourceTable,
+        }
         const content: dom.Region[] = []
         for (const dd of this.dataDirectories) {
             // find which section is the data in
@@ -113,12 +119,9 @@ export class PeParser implements parser.Parser {
                 if (dd.rva >= s.rva && dd.rva < s.rva + s.size) {
                     const offset = dd.rva - s.rva + s.offset
                     const size = dd.size
-                    if (dd.name === 'ImportTable') {
-                        content.push(this.parseImportTable(p, offset, size, dd.rva))
-                    } else if (dd.name === 'ExportTable') {
-                        content.push(this.parseExportTable(p, offset, size, dd.rva))
-                    } else if (dd.name === 'TLSTable') {
-                        content.push(this.parseTLSTable(p, offset, size, dd.rva))
+                    if (dd.name in parsers) {
+                        const region = parsers[dd.name].call(this, p, offset, size, dd.rva)
+                        content.push(region)
                     } else {
                         content.push(p.createRegion('G', offset, size, dd.name))
                     }
@@ -242,6 +245,92 @@ export class PeParser implements parser.Parser {
             p.createRegion('N', -1,     4, 'Characteristics', 'The four bits [23:20] describe alignment info.  Possible values are those defined as IMAGE_SCN_ALIGN_*, which are also used to describe alignment of section in object files.  The other 28 bits are reserved for future use.            '),
         ]
         return tls
+    }
+
+    parseResourceTable(p:parser.ParseHelper, offset:number, length:number, rva:number) {
+        const globalOffset = offset
+        const globalRva = rva
+        function parseResourceDirectory(offset:number, rva: number, level: number) {
+            const ret: dom.Region[] = []
+            const rd = p.createRegion('C', offset, 0, 'ResourceDirectory')
+            rd.subRegions = [
+                p.createRegion('N', -1, 4, 'Characteristics', 'Resource flags. This field is reserved for future use. It is currently set to zero.'),
+                p.createRegion('N', -1, 4, 'TimeStamp', 'The time that the resource data was created by the resource compiler.'),
+                p.createRegion('N', -1, 2, 'MajorVersion', 'The major version number, set by the user.'),
+                p.createRegion('N', -1, 2, 'MinorVersion', 'The minor version number, set by the user.'),
+                p.createRegion('L', -1, 2, 'NumberOfNameEntries', 'The number of directory entries immediately following the table that use strings to identify Type, Name, or Language entries (depending on the level of the table).'),
+                p.createRegion('L', -1, 2, 'NumberOfIDEntries', 'The number of directory entries immediately following the Name entries that use numeric IDs for Type, Name, or Language entries.'),
+            ]
+            rd.endPos = p.position
+            ret.push(rd)
+
+            const nn = p.num.NumberOfNameEntries
+            const ni = p.num.NumberOfIDEntries
+            const entries = p.createRegion('C', rd.endPos, rd.endPos + (nn + ni) * 8, 'Entries')
+            entries.subRegions = []
+            ret.push(entries)
+            for (let i = 0; i < nn + ni; i++) {
+                const entry = p.createRegion('C', rd.endPos + i * 8, 8, 'Entry')
+                entries.subRegions.push(entry)
+                entry.subRegions = []
+
+                if (i < nn) {
+                    const nameRVA = p.createRegion('P', entry.startPos, 4, 'NameRVA', 'The address of a string that gives the Type, Name, or Language ID entry, depending on level of table.')
+                    nameRVA.interpretedValue = util.parseString(p.buffer, (p.num.NameRVA & 0x7FFFFFFF) - rva + offset, 2, false, 'utf-16le', 2)
+                    entry.subRegions.push(nameRVA)
+                } else {
+                    const idRVA = p.createRegion('N', entry.startPos, 4, 'IntegerID', 'A 32-bit integer that identifies the Type, Name, or Language ID entry.')
+                    if (level === 1) {
+                        // https://docs.microsoft.com/en-us/windows/win32/menurc/resource-types
+                        const resourceIdMap: {[id:number]:string} = {
+                            1: 'Cursor',        2: 'Bitmap',       3: 'Icon',      4: 'Menu',          5: 'Dialog',
+                            6: 'String',        7: 'FontDir',      8: 'Font',      9:  'Accelerator', 10: 'RCData',
+                            11:'MessageTable', 12: 'GroupCursor', 14: 'GroupIcon', 16: 'Version',     17: 'DlgInclude',
+                            19:'PlugPlay',     20: 'VxD',         21: 'AniCursor', 22: 'AniIcon',     23: 'HTML',        24: 'Manifest',
+                        }
+                        idRVA.interpretedValue = resourceIdMap[Number(idRVA.numValue)]
+                        idRVA.description += '\nFor `Type` ID: ' + JSON.stringify(resourceIdMap, null, 2)
+                    }
+                    entry.subRegions.push(idRVA)
+                }
+                const entryRVA = p.createRegion('P', entry.startPos + 4, 4, '', 'High bit 0. Address of a Resource Data entry (a leaf). High bit 1. The lower 31 bits are the address of another resource directory table (the next level down).')
+                const rvaNumber = Number(entryRVA.numValue) & 0x7FFFFFFF
+                const leaf = (Number(entryRVA.numValue) & 0x80000000) == 0
+                entryRVA.ID = leaf? 'DataEntryRVA' : 'SubdirectoryRVA'
+                entry.subRegions.push(entryRVA)
+
+                if (level === 1) {
+                    entry.interpretedValue = 'type = ' + entry.subRegions[0].interpretedValue
+                } else if (level === 2) {
+                    entry.interpretedValue = 'ID = ' + entry.subRegions[0].numValue
+                } else if (level === 3) {
+                    entry.interpretedValue = 'language = ' + entry.subRegions[0].numValue
+                }
+
+                if (leaf) {
+                    const deOffset = rvaNumber - rva + offset
+                    const rde = p.createRegion('C', deOffset, 16, 'ResourceDataEntry')
+                    rde.subRegions = [
+                        p.createRegion('P', deOffset, 4, 'DataRVA', 'The address of a unit of resource data in the Resource Data area.'),
+                        p.createRegion('L', -1,       4, 'Size', 'The size, in bytes, of the resource data that is pointed to by the Data RVA field.'),
+                        p.createRegion('N', -1,       4, 'Codepage', 'The code page that is used to decode code point values within the resource data. Typically, the code page would be the Unicode code page.'),
+                        p.createRegion('N', -1,       4, 'Reserved', 'must be 0.'),
+                    ]
+                    const content = p.createRegion('G', p.num.DataRVA - globalRva + globalOffset, p.num.Size, 'ResourceData')
+                    rde.subRegions.push(content)
+                    entry.subRegions.push(rde)
+                } else {
+                    const subRDs = parseResourceDirectory(rvaNumber - rva + offset, rvaNumber, level + 1)
+                    entry.subRegions.push(...subRDs)
+                }
+            }
+
+            return ret
+        }
+
+        const rt = p.createRegion('C', offset, length, 'ResourceTable')
+        rt.subRegions = [...parseResourceDirectory(offset, 0, 1)]
+        return rt
     }
 
     parseCOFFHeader(p: parser.ParseHelper, offset: number) {

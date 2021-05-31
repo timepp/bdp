@@ -48,6 +48,7 @@ td.view {
 }
 
 span.interpreted {
+    padding-left: 10px;
     color: blue
 }
 
