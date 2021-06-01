@@ -4,7 +4,7 @@ import {PeParser} from './parser/pe.js'
 import { ZipParser } from './parser/zip.js'
 import { RiffParser } from './parser/riff.js'
 import { TTFParser } from './parser/ttf.js'
-import { Mp3Parser } from './parser/mp3.js'
+import { Mp4Parser } from './parser/mp4.js'
 
 const parsers: {
     [id:string]: parser.Parser
@@ -16,7 +16,7 @@ export function init() {
     parsers.pe = new PeParser()
     parsers.riff = new RiffParser()
     parsers.ttf = new TTFParser()
-    parsers.mp3 = new Mp3Parser()
+    parsers.mp4 = new Mp4Parser()
 }
 
 export function parse(buffer: ArrayBuffer, filename: string, forceType?: string) {
