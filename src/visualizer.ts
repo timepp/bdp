@@ -34,39 +34,42 @@ export class Visualizer {
         this.tdData = []
         this.tdText = []
         this.columns = 16
-        this.rows = 32
+        this.rows = 16
         this.offset = 0
         this.highlights = []
         this.highlightLI = undefined
-        this.desc = document.createElement('pre')
+        this.desc = document.createElement('div')
     }
 
     visualize () {
         this.container.innerHTML = ''
         const tbl = document.createElement('table')
-        const tr = document.createElement('tr')
-        const tdTree = document.createElement('td')
-        tdTree.classList.add('tree')
-        const divTree = document.createElement('div')
-        divTree.classList.add('tree')
-        tdTree.appendChild(divTree)
-        const tdView = document.createElement('td')
-        tdView.classList.add('view')
-        tr.appendChild(tdTree)
-        tr.appendChild(tdView)
-        tbl.appendChild(tr)
         this.container.appendChild(tbl)
 
+        const tr = document.createElement('tr')
+        tbl.appendChild(tr)
+
+        const tdTree = document.createElement('td')
+        tr.appendChild(tdTree)
+        tdTree.classList.add('tree')
+        const divTree = document.createElement('div')
+        tdTree.appendChild(divTree)
+        divTree.classList.add('tree')
+        const tdView = document.createElement('td')
+        tdView.classList.add('view')
+        tr.appendChild(tdView)
+
         this.desc.classList.add('description')
-        this.container.appendChild(this.desc)
 
         this.createNavigateButtons(tdView)
 
         this.createTree(divTree, this.dom.regions)
         this.createDataView(tdView, this.columns, this.rows)
+        tdView.appendChild(this.desc)
+
         this.refreshDataView(0)
 
-        divTree.style.height = tdView.offsetHeight + 'px'
+        divTree.style.height = tdView.offsetHeight - 10 + 'px'
     }
 
     createNavigateButtons(parent: Element) {

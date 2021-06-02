@@ -38,13 +38,17 @@ td.tree {
 
 div.tree {
     vertical-align: top;
-    padding-right: 20px;
-    overflow: scroll;
+    padding: 10px 0px;
+    overflow: auto;
     min-width: 500px;
+    border: 1px solid gray;
 }
 
 td.view {
     padding-left: 20px;
+    padding-right: 0px;
+    padding-top: 0px;
+    padding-bottom: 0px;
 }
 
 span.interpreted {
@@ -82,7 +86,9 @@ span.interpreted {
   }
 
 .description {
-    margin: 10px;
+    margin-top: 10px;
     padding: 10px;
     background-color: lightgoldenrodyellow;
+    height: 200px;
+    overflow:auto;
 }
