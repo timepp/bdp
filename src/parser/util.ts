@@ -57,7 +57,7 @@ export function parseNullTerminatedString(buf: ArrayBuffer, start: number) {
     return ''
 }
 
-export function parseString(buf: ArrayBuffer, offset:number, lengthPrefixLength:number, lengthPrefixBigEndian: boolean, encoding: string, byteScale:number) {
+export function parseLengthPrefixedString(buf: ArrayBuffer, offset:number, lengthPrefixLength:number, lengthPrefixBigEndian: boolean, encoding: string, byteScale:number) {
     const len = Number(parseValue(buf, offset, offset + lengthPrefixLength, lengthPrefixBigEndian, false))
     return parseFixedLengthString(buf, offset + lengthPrefixLength, len * byteScale, encoding)
 }
@@ -65,6 +65,15 @@ export function parseString(buf: ArrayBuffer, offset:number, lengthPrefixLength:
 export function parseFixedLengthString(buf: ArrayBuffer, offset: number, len: number, encoding: string) {
     const decoder = new TextDecoder(encoding)
     return decoder.decode(buf.slice(offset, offset + len))
+}
+
+export function trimNull(s:string) {
+    let i = s.length - 1
+    while (i >= 0) {
+        if (s.charCodeAt(i) !== 0) break
+        i--
+    }
+    return s.slice(0, i + 1)
 }
 
 export function parseValue(buf: ArrayBuffer, start: number, end: number, isBigEndian: boolean, isSigned: boolean) : bigint {

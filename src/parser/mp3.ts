@@ -76,7 +76,8 @@ export class Mp3Parser implements parser.Parser {
                 const bom = p.createRegion('G', offset + 1, 2, 'BOM')
                 const enc = util.checkContent(p.buffer, bom.startPos, [0xFF, 0xFE])? 'utf-16le': 'utf-16be'
                 const text = p.createRegion('G', offset + 3, len - 3, 'Text')
-                text.strValue = util.parseFixedLengthString(p.buffer, text.startPos, len - 3, enc)
+                const s = util.parseFixedLengthString(p.buffer, text.startPos, len - 3, enc)
+                text.strValue = util.trimNull(s)
                 regions.push(bom, text)
                 str = text.strValue
             } else {

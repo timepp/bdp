@@ -276,7 +276,7 @@ export class PeParser implements parser.Parser {
 
                 if (i < nn) {
                     const nameRVA = p.createRegion('P', entry.startPos, 4, 'NameRVA', 'The address of a string that gives the Type, Name, or Language ID entry, depending on level of table.')
-                    nameRVA.interpretedValue = util.parseString(p.buffer, (p.num.NameRVA & 0x7FFFFFFF) - rva + offset, 2, false, 'utf-16le', 2)
+                    nameRVA.interpretedValue = util.parseLengthPrefixedString(p.buffer, (p.num.NameRVA & 0x7FFFFFFF) - rva + offset, 2, false, 'utf-16le', 2)
                     entry.subRegions.push(nameRVA)
                 } else {
                     const idRVA = p.createRegion('N', entry.startPos, 4, 'IntegerID', 'A 32-bit integer that identifies the Type, Name, or Language ID entry.')
