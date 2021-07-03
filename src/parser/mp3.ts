@@ -3,6 +3,9 @@ import * as parser from './parser.js'
 import * as util from './util.js'
 
 export class Mp3Parser implements parser.Parser {
+    cbrFrameSize = -1 // for cbr, record each frame size
+    vbrFramePos: number[] = [] // for vbr, record each frame position
+
     isSupportedFile(filename: string, ext: string) {
         return ext === 'mp3'
     }
@@ -12,9 +15,14 @@ export class Mp3Parser implements parser.Parser {
         p.setEndian(dom.Endian.BE)
         const ret: dom.Region[] = []
 
+        let pos = 0
         if (util.checkContent(buffer, 0, [0x49, 0x44, 0x33])) {
-            ret.push(this.parseID3v2(p))
+            const id3v2 = this.parseID3v2(p)
+            ret.push(id3v2)
+            pos = id3v2.endPos
         }
+
+        
         
         return ret
     }
