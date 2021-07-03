@@ -1,4 +1,4 @@
-import * as parser from './parser/parser.js'
+import * as parser from './parser/common/parser.js'
 import * as ico from './parser/ico.js'
 import {PeParser} from './parser/pe.js'
 import { ZipParser } from './parser/zip.js'

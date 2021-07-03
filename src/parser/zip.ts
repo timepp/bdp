@@ -1,6 +1,6 @@
-import * as dom from './dom.js'
-import * as util from './util.js'
-import * as parser from './parser.js'
+import * as dom from './common/dom.js'
+import * as util from './common/util.js'
+import * as parser from './common/parser.js'
 
 export class ZipParser implements parser.Parser {
     isSupportedFile(filename: string, ext: string) {

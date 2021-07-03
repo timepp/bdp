@@ -1,5 +1,5 @@
-import * as dom from './parser/dom.js'
-import * as util from './parser/util.js'
+import * as dom from './parser/common/dom.js'
+import * as util from './parser/common/util.js'
 
 type Highlight = {
     color: [number, number, number],
