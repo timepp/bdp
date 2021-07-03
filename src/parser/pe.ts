@@ -31,7 +31,7 @@ export class PeParser implements parser.Parser {
     }
 
     isSupportedFile(filename: string, ext: string) {
-        return ['exe', 'dll', 'scr', 'sys', 'ocx', 'mui', 'efi', 'drv', 'cpl', 'acm', 'ax', 'tsp'].indexOf(ext) >= 0
+        return ['exe', 'dll', 'scr', 'sys', 'ocx', 'mui', 'efi', 'drv', 'cpl', 'acm', 'ax', 'tsp', 'pyd'].indexOf(ext) >= 0
     }
 
     parse(buffer: ArrayBuffer) : dom.Region[] {
