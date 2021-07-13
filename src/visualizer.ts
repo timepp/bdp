@@ -20,6 +20,7 @@ export class Visualizer {
     tdOffset: HTMLTableCellElement[]
     tdData: HTMLTableCellElement[][]
     tdText: HTMLTableCellElement[]
+    positionElement?: HTMLSpanElement
     desc: HTMLElement
     columns: number
     rows: number
@@ -38,6 +39,7 @@ export class Visualizer {
         this.offset = 0
         this.highlights = []
         this.highlightLI = undefined
+        this.positionElement = undefined
         this.desc = document.createElement('div')
     }
 
@@ -67,7 +69,7 @@ export class Visualizer {
         this.createDataView(tdView, this.columns, this.rows)
         tdView.appendChild(this.desc)
 
-        this.refreshDataView(0)
+        this.gotoOffset(0)
 
         divTree.style.height = tdView.offsetHeight - 10 + 'px'
     }
@@ -77,67 +79,57 @@ export class Visualizer {
         const self = this
         const pageSize = this.columns * this.rows
         const maxPage = Math.ceil(this.dom.buffer.byteLength / pageSize) - 1
+        const dataLen = this.dom.buffer.byteLength
 
-        btn = document.createElement('button')
-        btn.textContent = "首页"
-        btn.onclick = function() {
-            self.offset = 0
-            self.refreshDataView(self.offset)
-        }
-        parent.appendChild(btn)
+        let group = document.createElement('div')
+        group.className = 'btn-group'
 
-        btn = document.createElement('button')
-        btn.textContent = "上一页"
-        btn.onclick = function() {
-            self.offset = Math.max(self.offset - pageSize, 0)
-            self.refreshDataView(self.offset)
-        }
-        parent.appendChild(btn)
+        btn = this.createBtn('首页', 'btn btn-outline-primary', () => self.gotoOffset(0))
+        group.appendChild(btn)
 
-        btn = document.createElement('button')
-        btn.textContent = "下一页"
-        btn.onclick = function() {
-            self.offset = Math.min(self.offset + pageSize, maxPage * pageSize)
-            self.refreshDataView(self.offset)
-        }
-        parent.appendChild(btn)
+        btn = this.createBtn('上一页', 'btn btn-outline-primary', () => self.gotoOffset(Math.max(self.offset - pageSize, 0)))
+        group.appendChild(btn)
+        
+        btn = this.createBtn('下一页', 'btn btn-outline-primary', () => self.gotoOffset(Math.min(self.offset + pageSize, maxPage * pageSize)))
+        group.appendChild(btn)
 
-        btn = document.createElement('button')
-        btn.textContent = "尾页"
-        btn.onclick = function() {
-            self.offset = maxPage * pageSize
-            self.refreshDataView(self.offset)
-        }
-        parent.appendChild(btn)
+        btn = this.createBtn('尾页', 'btn btn-outline-primary', () => self.gotoOffset(maxPage * pageSize))
+        group.appendChild(btn)
 
-        parent.appendChild(document.createTextNode('   '))
+        parent.appendChild(group)
 
-        btn = document.createElement('button')
-        btn.textContent = "转到页"
-        btn.onclick = function() {
+        this.positionElement = document.createElement('span')
+        this.positionElement.className = 'position'
+        parent.appendChild(this.positionElement)
+
+        group = document.createElement('div')
+        group.className = 'btn-group'
+
+        btn = this.createBtn('转到页', 'btn btn-outline-primary', function() {
             let v = prompt("转到哪一页?")
             if (v === null) return
             let n = parseInt(v)
             if (n < 0) n = 0
             if (n > maxPage) n = maxPage
-            self.offset = n * pageSize
-            self.refreshDataView(self.offset)
-        }
-        parent.appendChild(btn)
+            self.gotoOffset(n * pageSize)
+        })
+        group.appendChild(btn)
 
-        btn = document.createElement('button')
-        btn.textContent = "转到位置"
-        btn.onclick = function() {
-            const v = prompt("输入位置, 16进制位置用0x前缀")
+        btn = this.createBtn('转到位置', 'btn btn-outline-primary', function() {
+            const v = prompt("输入位置, 例如: 33949, 0x1000, 50%")
             if (v === null) return
-            const x = parseInt(v)
+            let x = parseInt(v)
+            if (v.endsWith('%')) {
+                x = dataLen * x / 100
+            }
+
             let n = Math.ceil(x / pageSize) - 1
             if (n < 0) n = 0
             if (n > maxPage) n = maxPage
-            self.offset = n * pageSize
-            self.refreshDataView(self.offset)
-        }
-        parent.appendChild(btn)
+            self.gotoOffset(n * pageSize)
+        })
+        group.appendChild(btn)
+        parent.appendChild(group)
     }
     
     createTree (parent: Element, d: dom.Region[]) {
@@ -147,6 +139,14 @@ export class Visualizer {
         for (const r of d) {
             this.insertRegion(ul, r)
         }
+    }
+
+    createBtn(text: string, c: string, onclick: ()=>void) {
+        let btn = document.createElement('button')
+        btn.textContent = text
+        btn.classList.add(...c.split(' '))
+        btn.onclick = onclick
+        return btn
     }
 
     getRegionDisplayText(r: dom.Region) {
@@ -204,7 +204,7 @@ export class Visualizer {
                 }
             }
             that.highlights.push({color: that.getColorForDataType(r.type), start: r.startPos, end: r.endPos, title: that.getRegionDisplayText(r)})
-            that.refresh(that.getPage(r.startPos))
+            that.gotoPage(that.getPage(r.startPos))
             that.desc.textContent = l.region.description
 
             if (r.subRegions !== undefined) {
@@ -294,8 +294,11 @@ export class Visualizer {
         }
     }
 
-    refreshDataView (offset: number) {
+    gotoOffset (offset: number) {
         this.offset = offset
+        const page = Math.floor(offset / (this.columns * this.rows))
+        const totalPage = Math.floor(this.dom.buffer.byteLength / (this.columns * this.rows))
+        this.positionElement.innerText = `${page + 1} / ${totalPage + 1}`
         const d = new Uint8Array(this.dom.buffer, offset)
         let dimColor = false
         let lastRangeIndex = -1
@@ -346,14 +349,14 @@ export class Visualizer {
         }
     }
 
-    refresh (page: number) {
-        this.refreshDataView(page * this.columns * this.rows)
+    gotoPage (page: number) {
+        this.gotoOffset(page * this.columns * this.rows)
     }
 
     ensureVisible (offset: number) {
         const wantedOffset = Math.floor(offset / this.columns) * this.columns
         if (wantedOffset !== this.offset) {
-            this.refreshDataView(wantedOffset)
+            this.gotoOffset(wantedOffset)
         }
     }
 

@@ -51,9 +51,19 @@ td.view {
     padding-bottom: 0px;
 }
 
+td.data {
+    padding-left: 3px;
+    padding-right: 3px;
+}
+
 span.interpreted {
     padding-left: 10px;
     color: blue
+}
+
+span.position {
+    padding-left: 15px;
+    padding-right: 15px;
 }
 
 /* Style the caret/arrow */
