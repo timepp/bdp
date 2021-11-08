@@ -298,7 +298,9 @@ export class Visualizer {
         this.offset = offset
         const page = Math.floor(offset / (this.columns * this.rows))
         const totalPage = Math.floor(this.dom.buffer.byteLength / (this.columns * this.rows))
-        this.positionElement.innerText = `${page + 1} / ${totalPage + 1}`
+        if (this.positionElement !== undefined) {
+            this.positionElement.innerText = `${page + 1} / ${totalPage + 1}`
+        }
         const d = new Uint8Array(this.dom.buffer, offset)
         let dimColor = false
         let lastRangeIndex = -1

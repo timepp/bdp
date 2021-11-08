@@ -24,8 +24,9 @@ function main(document: HTMLDocument, testData: InlineFileData) {
     document.body.appendChild(ui)
 
     input.onchange = async function(e: Event) {
-        const f = e.target.files[0]
-        console.log(e.target.files[0])
+        if (input.files === null) return
+        const f = input.files[0]
+        console.log(f)
         const buffer = await f.arrayBuffer()
         applyBuffer(buffer, f.name, ui)
     }
