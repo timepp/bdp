@@ -6,13 +6,13 @@ type InlineFileData = {
     base64Data: string
 }
 
-export function run(document: HTMLDocument, testData: InlineFileData) {
+export function run(document: Document, testData: InlineFileData) {
     document.body.onload = function() {
         main(document, testData)
     }
 }
 
-function main(document: HTMLDocument, testData: InlineFileData) {
+function main(document: Document, testData: InlineFileData) {
     bdp.init()
 
     let ui = document.createElement('div')
@@ -24,10 +24,12 @@ function main(document: HTMLDocument, testData: InlineFileData) {
     document.body.appendChild(ui)
 
     input.onchange = async function(e: Event) {
-        const f = e.target.files[0]
-        console.log(e.target.files[0])
-        const buffer = await f.arrayBuffer()
-        applyBuffer(buffer, f.name, ui)
+        if (input.files) {
+            const f = input.files[0]
+            console.log(input.files[0])
+            const buffer = await f.arrayBuffer()
+            applyBuffer(buffer, f.name, ui)
+        }
     }
 
     try {
