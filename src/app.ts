@@ -6,13 +6,13 @@ type InlineFileData = {
     base64Data: string
 }
 
-export function run(document: HTMLDocument, testData: InlineFileData) {
+export function run(document: Document, testData: InlineFileData) {
     document.body.onload = function() {
         main(document, testData)
     }
 }
 
-function main(document: HTMLDocument, testData: InlineFileData) {
+function main(document: Document, testData: InlineFileData) {
     bdp.init()
 
     let ui = document.createElement('div')

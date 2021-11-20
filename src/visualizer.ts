@@ -20,7 +20,7 @@ export class Visualizer {
     tdOffset: HTMLTableCellElement[]
     tdData: HTMLTableCellElement[][]
     tdText: HTMLTableCellElement[]
-    positionElement?: HTMLSpanElement
+    positionElement: HTMLSpanElement
     desc: HTMLElement
     columns: number
     rows: number
@@ -39,7 +39,8 @@ export class Visualizer {
         this.offset = 0
         this.highlights = []
         this.highlightLI = undefined
-        this.positionElement = undefined
+        this.positionElement = document.createElement('span')
+        this.positionElement.className = 'position'
         this.desc = document.createElement('div')
     }
 
@@ -98,8 +99,6 @@ export class Visualizer {
 
         parent.appendChild(group)
 
-        this.positionElement = document.createElement('span')
-        this.positionElement.className = 'position'
         parent.appendChild(this.positionElement)
 
         group = document.createElement('div')
