@@ -8,8 +8,8 @@
     "gen": "test/datagen.js",
     "dev": "start http-server -c-1 -p 8080 . && start http://localhost:8080/app/bdp.html",
     "dist": "start http-server -c-1 -p 8080 . && start http://localhost:8080/dist/bdp.html",
-    "build": "tsc",
-    "pack": "npx webpack && node build.js"
+    "build": "tsc && node build.js",
+    "pack": "node build.js"
   },
   "author": "",
   "license": "ISC",

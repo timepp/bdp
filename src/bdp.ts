@@ -6,6 +6,7 @@ import { RiffParser } from './parser/riff.js'
 import { TTFParser } from './parser/ttf.js'
 import { Mp4Parser } from './parser/mp4.js'
 import { Mp3Parser } from './parser/mp3.js'
+import { BerParser } from './parser/asn.js'
 
 const parsers: {
     [id:string]: parser.Parser
@@ -19,6 +20,7 @@ export function init() {
     parsers.ttf = new TTFParser()
     parsers.mp3 = new Mp3Parser()
     parsers.mp4 = new Mp4Parser()
+    parsers.ber = new BerParser()
 }
 
 export function parse(buffer: ArrayBuffer, filename: string, forceType?: string) {
