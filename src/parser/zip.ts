@@ -3,8 +3,8 @@ import * as util from './common/util.js'
 import * as parser from './common/parser.js'
 
 export class ZipParser implements parser.Parser {
-    isSupportedFile(filename: string, ext: string) {
-        return ext === 'zip'
+    isSupportedFile(filename: string, ext: string, buffer:ArrayBuffer) {
+        return ext === 'zip' || util.checkContent(buffer, 0, [0x50, 0x4b, 0x03, 0x04])
     }
 
     parse(buffer: ArrayBuffer) : dom.Region[] {

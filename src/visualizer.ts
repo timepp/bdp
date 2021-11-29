@@ -66,13 +66,14 @@ export class Visualizer {
 
         this.createNavigateButtons(tdView)
 
-        this.createTree(divTree, this.dom.regions)
+        
         this.createDataView(tdView, this.columns, this.rows)
         tdView.appendChild(this.desc)
 
         this.gotoOffset(0)
 
         divTree.style.height = tdView.offsetHeight - 10 + 'px'
+        this.createTree(divTree, this.dom.regions)
     }
 
     createNavigateButtons(parent: Element) {

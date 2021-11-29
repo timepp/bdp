@@ -56,7 +56,7 @@ export const standardTypes = [
 ]
 
 export class BerParser implements parser.Parser {
-    isSupportedFile(filename: string, ext: string) {
+    isSupportedFile(filename: string, ext: string, buffer:ArrayBuffer) {
         return ext === 'ber' || ext === 'der' || ext === 'cer'
     }
 

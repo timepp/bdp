@@ -1,3 +1,9 @@
+html, 
+body {
+    height: 100%;
+    font-size: medium;
+}
+
 table.data_view {
     font-family: "Cascadia Code", consolas, monospace;
 }
@@ -39,7 +45,7 @@ td.tree {
 div.tree {
     vertical-align: top;
     padding: 10px 0px;
-    overflow: auto;
+    overflow: scroll;
     min-width: 500px;
     border: 1px solid gray;
 }

@@ -3,7 +3,7 @@ import * as util from './util.js'
 
 export interface Parser {
     parse(buffer: ArrayBuffer) : dom.Region[]
-    isSupportedFile(filename: string, ext: string): boolean
+    isSupportedFile(filename: string, ext: string, buffer:ArrayBuffer): boolean
 }
 
 export class ParseHelper {
@@ -23,9 +23,23 @@ export class ParseHelper {
         this.endian = dom.Endian.LE
     }
 
+    fork(pos: number, length: number) {
+        if (pos === -1) {
+            pos = this.position
+        }
+        const p = new ParseHelper(this.buffer.slice(0, pos + length))
+        p.position = pos
+        p.endian = this.endian
+        return p
+    }
+
     createCompoundRegion(pos: number, length: number, ID: string, description:string = '', subRegions:dom.Region[] = []) {
         if (pos === -1) {
             pos = this.position
+        }
+
+        if (length === -1) {
+            length = this.buffer.byteLength - pos
         }
 
         const r: dom.Region = {
@@ -38,6 +52,10 @@ export class ParseHelper {
     createRegion(type: dom.RegionType, pos: number, length: number, ID:string, description?:string, callback?:(r:dom.Region)=>void) : dom.Region {
         if (pos === -1) {
             pos = this.position
+        }
+
+        if (length === -1) {
+            length = this.buffer.byteLength - pos
         }
 
         const r: dom.Region = {

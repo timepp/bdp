@@ -7,6 +7,8 @@ import { TTFParser } from './parser/ttf.js'
 import { Mp4Parser } from './parser/mp4.js'
 import { Mp3Parser } from './parser/mp3.js'
 import { BerParser } from './parser/asn.js'
+import { PngParser } from './parser/png.js'
+import { JpgParser } from './parser/jpg.js'
 
 const parsers: {
     [id:string]: parser.Parser
@@ -21,6 +23,8 @@ export function init() {
     parsers.mp3 = new Mp3Parser()
     parsers.mp4 = new Mp4Parser()
     parsers.ber = new BerParser()
+    parsers.png = new PngParser()
+    parsers.jpg = new JpgParser()
 }
 
 export function parse(buffer: ArrayBuffer, filename: string, forceType?: string) {
@@ -30,7 +34,7 @@ export function parse(buffer: ArrayBuffer, filename: string, forceType?: string)
         parser = parsers[forceType]
     } else {
         for (const k of Object.keys(parsers)) {
-            if (parsers[k].isSupportedFile(filename, ext)) {
+            if (parsers[k].isSupportedFile(filename, ext, buffer)) {
                 parser = parsers[k]
                 console.log('selected parser: ' + k)
                 break
