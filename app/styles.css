@@ -20,6 +20,17 @@ table.data_view td.highlight {
     background-color: lime;
 }
 
+table.tree {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid black;
+}
+
+table.tree td {
+    border-collapse: collapse;
+    border: 1px solid black;
+}
+
 li {
     font-family: monospace;
     cursor: pointer;

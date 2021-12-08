@@ -133,11 +133,20 @@ export class Visualizer {
     }
     
     createTree (parent: Element, d: dom.Region[]) {
-        const ul = document.createElement('ul')
-        parent.appendChild(ul)
-    
+        const p = $(parent)
+        const t = $('<table>').addClass('tree')
+        const th = $('<thead>')
+        const tr = $('<tr>')
+        tr.append($('<th>').text('name'))
+        tr.append($('<th>').text('length'))
+        tr.append($('<th>').text('value'))
+        t.append(th.append(tr))
+        const tb = $('<tbody>')
+        t.append(tb)
+        p.append(t)
+
         for (const r of d) {
-            this.insertRegion(ul, r)
+            tb.append(this.createRegionRow(r, 0))
         }
     }
 
@@ -158,6 +167,56 @@ export class Visualizer {
             text += ' ' + r.strValue
         }
         return text
+    }
+
+    onRowSelect(obj: Element) {
+        const row = $(obj)
+        const r: dom.Region = row.data('region')
+        this.highlights = []
+        if (r.subRegions) {
+            for (const subR of r.subRegions) {
+                if (subR !== undefined)
+                    this.highlights.push({color: this.getColorForDataType(subR.type), start: subR.startPos, end: subR.endPos, title: this.getRegionDisplayText(subR)})
+            }
+        }
+        this.highlights.push({color: this.getColorForDataType(r.type), start: r.startPos, end: r.endPos, title: this.getRegionDisplayText(r)})
+        this.gotoPage(this.getPage(r.startPos))
+        this.desc.textContent = r.description
+    }
+
+    onTreeBtnClick(obj: Element) {
+        const btn = $(obj)
+        const row = btn.data('row')
+        const expand = btn.text() === '+'
+        if (expand) {
+            btn.text('-')
+            const childRows = row.data('child')
+        } else {
+            btn.text('+')
+        }
+    }
+
+    createRegionRow(r: dom.Region, depth: number) {
+        const row = $('<tr>')
+        const tdID = $('<td>')
+        tdID.append("    ".repeat(depth))
+        if (r.subRegions !== undefined) {
+            const btn = $('<button>').text('+')
+            btn.data('row', row)
+            btn.on('click', e => {this.onTreeBtnClick(e.currentTarget)})
+            tdID.append(btn)
+        }
+        tdID.append(r.ID)
+
+        row.append(tdID)
+        row.append($('<td>').text(r.endPos - r.startPos))
+        row.append($('<td>').text(this.getRegionDisplayText(r)))
+        row.data('region', r)
+        row.data('depth', depth)
+
+        row.on('click', e => {this.onRowSelect(e.currentTarget)})
+
+        return row
     }
 
     insertRegion (parent: HTMLUListElement, r: dom.Region) {
