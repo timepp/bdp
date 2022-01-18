@@ -70,3 +70,13 @@ export function hslToRgb(h:number, s:number, l:number): [number, number, number]
   
     return [ r * 255, g * 255, b * 255 ];
   }
+
+  export function createHtmlElement(tag: string, text: string) {
+    const e = document.createElement(tag)
+    e.textContent = text
+    return e
+  }
+
+  export function insertAfter(e1: Element, e2: Element) {
+    e1.parentElement?.insertBefore(e2, e1.nextElementSibling)
+  }

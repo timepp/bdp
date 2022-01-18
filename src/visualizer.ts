@@ -14,6 +14,17 @@ interface RegionElement extends HTMLLIElement {
     endIndex: number
 }
 
+interface RegionRow extends HTMLTableRowElement {
+    expand: boolean,
+    childRows: RegionRow[],
+    region: dom.Region,
+    depth: number
+}
+
+interface RegionButton extends HTMLButtonElement {
+    row: RegionRow
+}
+
 export class Visualizer {
     container: Element
     dom: dom.FileDOM
@@ -27,6 +38,7 @@ export class Visualizer {
     offset: number
     highlights: Highlight[]
     highlightLI?: RegionElement
+    currentRow?: RegionRow
 
     constructor(e: Element, d: dom.FileDOM) {
         this.container = e
@@ -133,17 +145,18 @@ export class Visualizer {
     }
     
     createTree (parent: Element, d: dom.Region[]) {
-        const p = $(parent)
-        const t = $('<table>').addClass('tree')
-        const th = $('<thead>')
-        const tr = $('<tr>')
-        tr.append($('<th>').text('name'))
-        tr.append($('<th>').text('length'))
-        tr.append($('<th>').text('value'))
-        t.append(th.append(tr))
-        const tb = $('<tbody>')
+        const t = document.createElement('table')
+        t.className = 'tree'
+        const thead = document.createElement('thead')
+        const tr = document.createElement('tr')
+        tr.append(util.createHtmlElement('th', 'name'))
+        tr.append(util.createHtmlElement('th', 'length'))
+        tr.append(util.createHtmlElement('th', 'value'))
+        thead.appendChild(tr)
+        t.appendChild(thead)
+        const tb = document.createElement('tbody')
         t.append(tb)
-        p.append(t)
+        parent.appendChild(t)
 
         for (const r of d) {
             tb.append(this.createRegionRow(r, 0))
@@ -169,9 +182,16 @@ export class Visualizer {
         return text
     }
 
-    onRowSelect(obj: Element) {
-        const row = $(obj)
-        const r: dom.Region = row.data('region')
+    onRowSelect(row: RegionRow) {
+        if (this.currentRow) {
+            this.currentRow.classList.remove('select')
+            this.delRegionRowStyle(this.currentRow, 'cover')
+        }
+        this.currentRow = row
+        this.currentRow.classList.add('select')
+        this.addRegionRowStyle(this.currentRow, 'cover')
+
+        const r = row.region
         this.highlights = []
         if (r.subRegions) {
             for (const subR of r.subRegions) {
@@ -184,37 +204,88 @@ export class Visualizer {
         this.desc.textContent = r.description
     }
 
-    onTreeBtnClick(obj: Element) {
-        const btn = $(obj)
-        const row = btn.data('row')
-        const expand = btn.text() === '+'
-        if (expand) {
-            btn.text('-')
-            const childRows = row.data('child')
+    onTreeBtnClick(btn: RegionButton) {
+        const row = btn.row
+        let childRows = row.childRows
+        const r = row.region
+        if (!row.expand) {
+            btn.textContent = '-'
+            const depth = row.depth
+            if (childRows === undefined && r.subRegions) {
+                childRows = r.subRegions.map(region=>{
+                    const subRow = this.createRegionRow(region, depth + 1)
+                    return subRow
+                })
+                row.childRows = childRows
+                for (const childRow of childRows.reverse()) util.insertAfter(row, childRow)
+                if (this.currentRow) {
+                    this.addRegionRowStyle(this.currentRow, 'cover')
+                }
+            }
+            row.expand = true
+            this.showRegionRowsRecursive(row)
         } else {
-            btn.text('+')
+            btn.textContent = '+'
+            row.expand = false
+            this.hideRegionRowsRecursive(row)
+        }
+    }
+
+    showRegionRowsRecursive(row: RegionRow) {
+        for (const r of row.childRows) {
+            r.style.display = ''
+            if (r.expand) this.showRegionRowsRecursive(r)
+        }
+    }
+
+    hideRegionRowsRecursive(row: RegionRow) {
+        for (const r of row.childRows) {
+            r.style.display = 'none'
+            if (r.expand) this.hideRegionRowsRecursive(r)
+        }
+    }
+
+    addRegionRowStyle(row: RegionRow, c: string) {
+        if (row.childRows) {
+            for (const r of row.childRows) {
+                r.classList.add(c)
+                this.addRegionRowStyle(r, c)
+            }
+        }
+    }
+
+    delRegionRowStyle(row: RegionRow, c: string) {
+        if (row.childRows) {
+            for (const r of row.childRows) {
+                r.classList.remove(c)
+                this.delRegionRowStyle(r, c)
+            }
         }
     }
 
     createRegionRow(r: dom.Region, depth: number) {
-        const row = $('<tr>')
-        const tdID = $('<td>')
-        tdID.append("    ".repeat(depth))
+        const row = document.createElement('tr') as RegionRow
+        const tdID = document.createElement('td')
+        tdID.style.paddingLeft = `${depth * 20}px`
         if (r.subRegions !== undefined) {
-            const btn = $('<button>').text('+')
-            btn.data('row', row)
-            btn.on('click', e => {this.onTreeBtnClick(e.currentTarget)})
+            const btn = document.createElement('button') as RegionButton
+            btn.textContent = '+'
+            btn.onclick = e => {
+                if (e.currentTarget) this.onTreeBtnClick(e.currentTarget as RegionButton)
+                e.stopPropagation()
+            }
+            btn.row = row
             tdID.append(btn)
         }
         tdID.append(r.ID)
 
         row.append(tdID)
-        row.append($('<td>').text(r.endPos - r.startPos))
-        row.append($('<td>').text(this.getRegionDisplayText(r)))
-        row.data('region', r)
-        row.data('depth', depth)
-
-        row.on('click', e => {this.onRowSelect(e.currentTarget)})
+        row.append(util.createHtmlElement('td', `${r.endPos - r.startPos}`))
+        row.append(util.createHtmlElement('td', this.getRegionDisplayText(r)))
+        row.region = r
+        row.depth = depth
+        row.expand = false
+        row.onclick = e => this.onRowSelect(e.currentTarget as RegionRow)
 
         return row
     }

@@ -23,3 +23,4 @@ compiler.run((e, s) => {
 
 fs.copyFileSync('app/bdp.html', 'dist/bdp.html')
 fs.copyFileSync('app/styles.css', 'dist/styles.css')
+fs.copyFileSync('app/testdata.js', 'dist/testdata.js')
