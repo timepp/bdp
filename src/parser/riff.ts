@@ -1,71 +1,66 @@
-import * as dom from './common/dom.js'
-import * as parser from './common/parser.js'
+import * as parser from './parser.js'
 
 export class RiffParser implements parser.Parser {
-    formType: string = ''
+  formType: string = ''
 
-    isSupportedFile(filename: string, ext: string) {
-        return ['wav', 'ani'].indexOf(ext) >= 0
+  isSupportedFile (filename: string, ext: string) {
+    return ['wav', 'ani'].indexOf(ext) >= 0
+  }
+
+  parse (buffer: ArrayBuffer) : parser.Region[] {
+    const p = new parser.Helper(buffer)
+    p.setEndian(parser.Endian.LE)
+
+    return this.parseChunks(p, 0)
+  }
+
+  parseChunks (p:parser.Helper, offset: number) {
+    const regions: parser.Region[] = []
+    while (offset < p.buffer.byteLength) {
+      const chunk = p.createCompoundRegion(offset, 0, 'Trunk', 'RIFF Trunk')
+      const tag = p.createStringRegion(offset, 4, 'FourCC', 'RIFF FourCC tag')
+      const sizeRegion = p.createSizeRegion(-1, 4, 'Size', 'RIFF chunk size')
+      const size = Number(sizeRegion.numValue)
+      const content = this.parseContent(p, tag.strValue?.trim(), offset + 8, size)
+      chunk.subRegions = [tag, sizeRegion, ...content]
+      chunk.strValue = tag.strValue
+      chunk.endPos = offset + size + 8
+      regions.push(chunk)
+      offset += size + 8
     }
+    return regions
+  }
 
-    parse(buffer: ArrayBuffer) : dom.Region[] {
-        let p = new parser.ParseHelper(buffer)
-        p.setEndian(dom.Endian.LE)
-
-        return this.parseChunks(p, 0)
+  parseContent (p:parser.Helper, fourCC: string | undefined, offset: number, size: number) {
+    if (fourCC === 'RIFF') {
+      const formType = p.createStringRegion(offset, 4, 'FormType')
+      this.formType = formType.strValue || ''
+      return [
+        formType,
+        ...this.parseChunks(p, offset + 4)
+      ]
+    } else if (this.formType === 'WAVE' && fourCC === 'fmt') {
+      return [
+        p.createNumberRegion(offset, 2, 'formatTag', '', { 1: 'PCM', 3: 'IEEE float', 6: '8-bit ITU-T G.711 A-law', 7: '8-bit ITU-T G.711 µ-law', 65534: 'Determined by SubFormat' }),
+        p.createNumberRegion(-1, 2, 'channels'),
+        p.createNumberRegion(-1, 4, 'samplesPerSecond'),
+        p.createNumberRegion(-1, 4, 'avgBytesPerSecond'),
+        p.createNumberRegion(-1, 2, 'blockAlign'),
+        p.createNumberRegion(-1, 2, 'bitsPerSample')
+      ]
+    } else if (this.formType === 'WAVE' && fourCC === 'data') {
+      return [
+        p.createGeneralRegion(offset, size, 'data')
+      ]
+    } else if (fourCC === 'LIST') {
+      return [
+        p.createStringRegion(offset, 4, 'ListName'),
+        ...this.parseChunks(p, offset + 4)
+      ]
+    } else {
+      return [
+        p.createGeneralRegion(offset, size, 'data')
+      ]
     }
-
-    parseChunks(p:parser.ParseHelper, offset: number) {
-        const regions: dom.Region[] = []
-        while (offset < p.buffer.byteLength) {
-            const chunk = p.createRegion('C', offset, 0, 'Trunk', 'RIFF Trunk')
-            chunk.subRegions = [
-                p.createRegion('S', offset, 4, 'FourCC', 'RIFF FourCC tag'),
-                p.createRegion('N', -1, 4, 'Size', 'RIFF chunk size')
-            ]
-            const size = p.num.Size
-            const tag = p.regionCache.FourCC.strValue?.trim() || ""
-            const content = this.parseContent(p, tag, offset + 8, size)
-            chunk.subRegions.push(...content)
-            chunk.strValue = tag
-            chunk.endPos = offset + size + 8
-            regions.push(chunk)
-
-            offset += size + 8
-        }
-        return regions
-    }
-
-    parseContent(p:parser.ParseHelper, fourCC: string, offset: number, size: number) {
-        if (fourCC === 'RIFF') {
-            const formType = p.createRegion('S', offset, 4, 'FormType')
-            this.formType = formType.strValue || ''
-            return [
-                formType,
-                ...this.parseChunks(p, offset + 4)
-            ]
-        } else if (this.formType === 'WAVE' && fourCC === 'fmt') {
-            return [
-                p.createRegion('N', offset, 2, 'formatTag'),
-                p.createRegion('N', -1,     2, 'channels'),
-                p.createRegion('N', -1,     4, 'samplesPerSecond'),
-                p.createRegion('N', -1,     4, 'avgBytesPerSecond'),
-                p.createRegion('N', -1,     2, 'blockAlign'),
-                p.createRegion('N', -1,     2, 'bitsPerSample')
-            ]
-        } else if (this.formType === 'WAVE' && fourCC === 'data') {
-            return [
-                p.createRegion('G', offset, size, 'data')
-            ]
-        } else if (fourCC === 'LIST') {
-            return [
-                p.createRegion('S', offset, 4, 'ListName'),
-                ...this.parseChunks(p, offset + 4)
-            ]
-        } else{
-            return [
-                p.createRegion('G', offset, size, 'data')
-            ]
-        }
-    }
+  }
 }

@@ -1,70 +1,124 @@
 html, 
 body {
     height: 100%;
-    font-size: medium;
     font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Liberation Sans",sans-serif;
 }
 
-table.data_view {
+div.data_view {
     font-family: "Cascadia Code", consolas, monospace;
+    border: 1px solid grey;
+    display: flex;
+    padding: 5px;
+    margin-top: 10px;
 }
 
-table.data_view td.text {
+div.data_view .data {
+    padding-right: 3px;
+    padding-left: 3px;
+    border-left: 1px solid white;
+    border-right: 1px solid white;
+}
+
+div.data_view .text {
     padding-left: 10px;
 }
 
-table.data_view td.offset {
+div.offset_wrapper {
     padding-right: 10px;
 }
 
-table.data_view td.highlight {
-    background-color: lime;
+div.data_view div.offset_wrapper span {
+    margin-top: 1px;
+    margin-bottom: 1px;
+}
+
+div.data_view div.byte_wrapper div {
+    margin-top: 1px;
+    margin-bottom: 1px;
+}
+
+div.data_view div.text span {
+    margin-top: 1px;
+    margin-bottom: 1px;
 }
 
 table.tree {
-    width: 100%;
-    border-collapse: collapse;
-    border: 1px solid black;
-    font-family: monospace
+    min-width: 500px;
+    font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif
 }
 
 table.tree td {
+    white-space: nowrap;
+    overflow: hidden;
     border: 1px solid black;
-    vertical-align: top;
     padding-left: 5px;
     padding-right: 5px;
 }
 
+table.tree th {
+    border: 1px solid black;
+    background-color: antiquewhite;
+}
+
+table.tree td img {
+    height: 1em;
+    margin-right: 5px;
+}
+
 tr.select {
-    background-color: dodgerblue;
+    background-color: rgb(205,232,255);
 }
-tr.cover {
-    background-color: lightskyblue;
-}
-
-li {
-    font-family: monospace;
-    cursor: pointer;
-    background-color: white;
+tr.cover > :nth-child(1){
+    border-left: 2px solid hotpink;
 }
 
-li.highlight {
-    background-color: lightskyblue;
+.primary_value {
+    font-weight: bold;
 }
 
-ul {
-    margin-top: 0;
-    font-family: "Cascadia Code", consolas, monospace;
-    list-style-type:none;
-    background-color: white;
-    padding-inline-start: 20px;
+.secondary_value {
+    color: grey;
+    margin-left: 10px;
+}
+
+table.value_def {
+    border: 1px solid darkgray;
+    border-collapse: collapse;
+}
+
+table.value_def td,th {
+    text-align: left;
+    border: 1px solid darkgray;
+    border-collapse: collapse;
+    padding: 2px 10px 2px 10px;
+}
+
+table.settings {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid black;
+    font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif
+}
+
+table.settings td {
+    border: 1px solid black;
+    padding-left: 5px;
+    padding-right: 5px;
+}
+
+table.settings th {
+    border: 1px solid black;
+    padding-left: 5px;
+    padding-right: 5px;
+    background-color: antiquewhite;
 }
 
 div.tree {
     vertical-align: top;
-    padding: 10px 0px;
-    overflow: scroll;
+    overflow: auto;
     min-width: 500px;
+    max-width: 1000px;
+    height: 100%;
     border: 1px solid gray;
 }
 
@@ -89,36 +143,7 @@ span.position {
     padding-left: 15px;
     padding-right: 15px;
 }
-
-/* Style the caret/arrow */
-.caret {
-    cursor: pointer;
-    user-select: none; /* Prevent text selection */
-  }
-  
-  /* Create the caret/arrow with a unicode, and style it */
-  .caret::before {
-    content: "\25B6";
-    color: black;
-    display: inline-block;
-    margin-right: 6px;
-  }
-  
-  /* Rotate the caret/arrow icon when clicked on (using JavaScript) */
-  .caret-down::before {
-    transform: rotate(90deg);
-  }
-  
-  /* Hide the nested list */
-  .nested {
-    display: none;
-  }
-  
-  /* Show the nested list when the user clicks on the caret/arrow (with JavaScript) */
-  .active {
-    display: block;
-  }
-
+ 
 .description {
     margin-top: 10px;
     padding: 10px;
@@ -126,3 +151,4 @@ span.position {
     height: 200px;
     overflow:auto;
 }
+

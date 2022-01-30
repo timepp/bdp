@@ -1,5 +1,6 @@
-import * as dom from './parser/common/dom.js'
 import * as util from './uiutil.js'
+import { Region, RegionType, FileDOM } from './parser/parser.js'
+import { off } from 'process'
 
 type Highlight = {
     color: [number, number, number],
@@ -8,528 +9,559 @@ type Highlight = {
     end: number
 }
 
-interface RegionElement extends HTMLLIElement {
-    region: dom.Region,
-    startIndex: number,
-    endIndex: number
-}
-
 interface RegionRow extends HTMLTableRowElement {
-    expand: boolean,
+    region: Region,
     childRows: RegionRow[],
-    region: dom.Region,
-    depth: number
+    expand: boolean,
+    depth: number,
+    // the following 2 property are for grouping rows
+    groupingRow: boolean
+    indexStart: number,
+    indexEnd: number
 }
 
-interface RegionButton extends HTMLButtonElement {
+interface RegionButton extends HTMLImageElement {
     row: RegionRow
 }
 
 export class Visualizer {
-    container: Element
-    dom: dom.FileDOM
-    tdOffset: HTMLTableCellElement[]
-    tdData: HTMLTableCellElement[][]
-    tdText: HTMLTableCellElement[]
-    positionElement: HTMLSpanElement
-    desc: HTMLElement
-    columns: number
-    rows: number
-    offset: number
-    highlights: Highlight[]
-    highlightLI?: RegionElement
-    currentRow?: RegionRow
+  container: Element
+  dom: FileDOM
+  offsets: HTMLSpanElement[]
+  byteCells: HTMLSpanElement[][]
+  texts: HTMLSpanElement[]
+  positionElement: HTMLSpanElement
+  desc: HTMLElement
+  columns: number
+  rows: number
+  offset: number
+  highlights: Highlight[]
+  currentRow?: RegionRow
 
-    constructor(e: Element, d: dom.FileDOM) {
-        this.container = e
-        this.dom = d
-        this.tdOffset = []
-        this.tdData = []
-        this.tdText = []
-        this.columns = 16
-        this.rows = 16
-        this.offset = 0
-        this.highlights = []
-        this.highlightLI = undefined
-        this.positionElement = document.createElement('span')
-        this.positionElement.className = 'position'
-        this.desc = document.createElement('div')
+  constructor (e: Element, d: FileDOM) {
+    this.container = e
+    this.dom = d
+    this.offsets = []
+    this.byteCells = []
+    this.texts = []
+    this.columns = 16
+    this.rows = 16
+    this.offset = 0
+    this.highlights = []
+    this.positionElement = document.createElement('span')
+    this.positionElement.className = 'position'
+    this.desc = document.createElement('div')
+  }
+
+  visualize () {
+    this.container.innerHTML = ''
+    const tbl = document.createElement('table')
+    tbl.className = 'main_ui'
+    tbl.style.borderSpacing = 'unset'
+    this.container.appendChild(tbl)
+
+    const tr = document.createElement('tr')
+    tbl.appendChild(tr)
+
+    const tdTree = document.createElement('td')
+    tdTree.style.verticalAlign = 'top'
+    tdTree.style.padding = '0px'
+    tr.appendChild(tdTree)
+    tdTree.classList.add('tree')
+    const divTree = document.createElement('div')
+    tdTree.appendChild(divTree)
+    divTree.classList.add('tree')
+    const tdView = document.createElement('td')
+    tdView.classList.add('view')
+    tr.appendChild(tdView)
+
+    this.desc.classList.add('description')
+
+    this.createNavigateButtons(tdView)
+
+    this.createDataView(tdView, this.columns, this.rows)
+    tdView.appendChild(this.desc)
+
+    this.gotoOffset(0)
+
+    divTree.style.height = tdView.offsetHeight - 10 + 'px'
+    this.createTree(divTree, this.dom.regions)
+  }
+
+  createNavigateButtons (parent: Element) {
+    let btn
+    const self = this
+    const pageSize = this.columns * this.rows
+    const maxPage = Math.ceil(this.dom.buffer.byteLength / pageSize) - 1
+    const dataLen = this.dom.buffer.byteLength
+
+    const contentToolbar = document.createElement('div')
+    contentToolbar.id = 'content_toolbar'
+    contentToolbar.style.display = 'flex'
+    contentToolbar.style.justifyContent = 'space-between'
+    parent.appendChild(contentToolbar)
+
+    let group = document.createElement('span')
+    group.className = 'btn-group'
+
+    btn = this.createBtn('首页', '', () => self.gotoOffset(0))
+    group.appendChild(btn)
+
+    btn = this.createBtn('上一页', '', () => self.gotoOffset(Math.max(self.offset - pageSize, 0)))
+    group.appendChild(btn)
+
+    btn = this.createBtn('下一页', '', () => self.gotoOffset(Math.min(self.offset + pageSize, maxPage * pageSize)))
+    group.appendChild(btn)
+
+    btn = this.createBtn('尾页', '', () => self.gotoOffset(maxPage * pageSize))
+    group.appendChild(btn)
+
+    contentToolbar.appendChild(group)
+
+    contentToolbar.appendChild(this.positionElement)
+
+    group = document.createElement('span')
+    group.className = 'btn-group'
+
+    btn = this.createBtn('转到页', 'btn btn-outline-primary', function () {
+      const v = prompt('转到哪一页?')
+      if (v === null) return
+      let n = parseInt(v)
+      if (n < 0) n = 0
+      if (n > maxPage) n = maxPage
+      self.gotoOffset(n * pageSize)
+    })
+    group.appendChild(btn)
+
+    btn = this.createBtn('转到位置', 'btn btn-outline-primary', function () {
+      const v = prompt('输入位置, 例如: 33949, 0x1000, 50%')
+      if (v === null) return
+      let x = parseInt(v)
+      if (v.endsWith('%')) {
+        x = dataLen * x / 100
+      }
+
+      let n = Math.ceil(x / pageSize) - 1
+      if (n < 0) n = 0
+      if (n > maxPage) n = maxPage
+      self.gotoOffset(n * pageSize)
+    })
+    group.appendChild(btn)
+    contentToolbar.appendChild(group)
+  }
+
+  createTree (parent: Element, d: Region[]) {
+    const t = document.createElement('table')
+    t.className = 'tree'
+    const thead = document.createElement('thead')
+    const tr = document.createElement('tr')
+    tr.append(util.createHtmlElement('th', 'name'))
+    tr.append(util.createHtmlElement('th', 'length'))
+    tr.append(util.createHtmlElement('th', 'value'))
+    thead.appendChild(tr)
+    t.appendChild(thead)
+    const tb = document.createElement('tbody')
+    t.append(tb)
+    parent.appendChild(t)
+
+    for (const r of d) {
+      tb.append(this.createRegionRow(r, 0))
+    }
+  }
+
+  createBtn (text: string, c: string, onclick: ()=>void) {
+    const btn = document.createElement('button')
+    btn.textContent = text
+    if (c !== '') {
+      btn.classList.add(...c.split(' '))
+    }
+    btn.onclick = onclick
+    return btn
+  }
+
+  getRegionDisplayText (r: Region) {
+    let text = ''
+    if (r.numValue !== undefined) {
+      text += `0x${r.numValue.toString(16)} (${r.numValue})`
+    }
+    if (r.strValue !== undefined) {
+      text += r.strValue
+    }
+    return text
+  }
+
+  matchFlag (n: bigint, index: number, value: number | number[]) {
+    const v = [value].flat()
+    for (let j = 0; j < v.length; j++) {
+      if (((n >> BigInt(index - j)) & 1n) !== BigInt(v[j])) return false
+    }
+    return true
+  }
+
+  createRegionDisplay (r: Region) {
+    const div = util.createElementWithClass('div', 'region_display')
+    const val = util.createElementWithClass('span', 'primary_value')
+    const desc = util.createElementWithClass('span', 'secondary_value')
+    const getValueDefinition = () => {
+      if (r.valueDefinition === undefined) return undefined
+      const ind = r.numValue === undefined ? (r.strValue === undefined ? '' : r.strValue) : `${r.numValue}`
+      return r.valueDefinition[ind]
     }
 
-    visualize () {
-        this.container.innerHTML = ''
-        const tbl = document.createElement('table')
-        this.container.appendChild(tbl)
+    let primaryValue: string | bigint | undefined
+    let secondaryValue = ''
+    if (r.type === RegionType.Compound || r.type === RegionType.General || r.type === RegionType.String) {
+      primaryValue = r.strValue || ''
+    } else if (r.type === RegionType.Number) {
+      primaryValue = r.numValue
+      secondaryValue = getValueDefinition() || `0x${r.numValue?.toString(16)}`
+    } else if (r.type === RegionType.Time) {
+      primaryValue = r.numValue
+      secondaryValue = new Date(Number(r.numValue) * 1000).toLocaleString()
+    } else if (r.type === RegionType.Offset) {
+      primaryValue = `0x${r.numValue?.toString(16)}`
+      secondaryValue = `${r.numValue}`
+    } else if (r.type === RegionType.Size) {
+      primaryValue = `${r.numValue}`
+      secondaryValue = `0x${r.numValue?.toString(16)}`
+    } else if (r.type === RegionType.Flag) {
+      primaryValue = `0x${r.numValue?.toString(16)}`
+      if (r.flagDefinition) {
+        const vals = []
+        for (const f of r.flagDefinition) {
+          const [index, val, id] = f
+          if (this.matchFlag(r.numValue || 0n, index, val)) {
+            vals.push(id)
+          }
+        }
+        secondaryValue = vals.join(' | ')
+      }
+    }
 
+    val.textContent = `${primaryValue}`
+    desc.textContent = secondaryValue
+    div.appendChild(val)
+    div.appendChild(desc)
+    return div
+  }
+
+  updateDesc (r: Region) {
+    this.desc.innerHTML = ''
+    const d = document.createElement('div')
+    d.appendChild(document.createTextNode(r.description))
+    this.desc.appendChild(d)
+    if (r.valueDefinition) {
+      const tbl = util.createTable('value_def', ['value', 'hex', 'meaning'])
+      for (const k in r.valueDefinition) {
         const tr = document.createElement('tr')
-        tbl.appendChild(tr)
-
-        const tdTree = document.createElement('td')
-        tr.appendChild(tdTree)
-        tdTree.classList.add('tree')
-        const divTree = document.createElement('div')
-        tdTree.appendChild(divTree)
-        divTree.classList.add('tree')
-        const tdView = document.createElement('td')
-        tdView.classList.add('view')
-        tr.appendChild(tdView)
-
-        this.desc.classList.add('description')
-
-        this.createNavigateButtons(tdView)
-
-        
-        this.createDataView(tdView, this.columns, this.rows)
-        tdView.appendChild(this.desc)
-
-        this.gotoOffset(0)
-
-        divTree.style.height = tdView.offsetHeight - 10 + 'px'
-        this.createTree(divTree, this.dom.regions)
+        tr.appendChild(util.createHtmlElement('td', k))
+        tr.appendChild(util.createHtmlElement('td', '0x' + parseInt(k).toString(16)))
+        tr.appendChild(util.createHtmlElement('td', r.valueDefinition[k]))
+        tbl.tbody.appendChild(tr)
+      }
+      this.desc.appendChild(tbl.table)
     }
-
-    createNavigateButtons(parent: Element) {
-        let btn
-        const self = this
-        const pageSize = this.columns * this.rows
-        const maxPage = Math.ceil(this.dom.buffer.byteLength / pageSize) - 1
-        const dataLen = this.dom.buffer.byteLength
-
-        let group = document.createElement('div')
-        group.className = 'btn-group'
-
-        btn = this.createBtn('首页', 'btn btn-outline-primary', () => self.gotoOffset(0))
-        group.appendChild(btn)
-
-        btn = this.createBtn('上一页', 'btn btn-outline-primary', () => self.gotoOffset(Math.max(self.offset - pageSize, 0)))
-        group.appendChild(btn)
-        
-        btn = this.createBtn('下一页', 'btn btn-outline-primary', () => self.gotoOffset(Math.min(self.offset + pageSize, maxPage * pageSize)))
-        group.appendChild(btn)
-
-        btn = this.createBtn('尾页', 'btn btn-outline-primary', () => self.gotoOffset(maxPage * pageSize))
-        group.appendChild(btn)
-
-        parent.appendChild(group)
-
-        parent.appendChild(this.positionElement)
-
-        group = document.createElement('div')
-        group.className = 'btn-group'
-
-        btn = this.createBtn('转到页', 'btn btn-outline-primary', function() {
-            let v = prompt("转到哪一页?")
-            if (v === null) return
-            let n = parseInt(v)
-            if (n < 0) n = 0
-            if (n > maxPage) n = maxPage
-            self.gotoOffset(n * pageSize)
-        })
-        group.appendChild(btn)
-
-        btn = this.createBtn('转到位置', 'btn btn-outline-primary', function() {
-            const v = prompt("输入位置, 例如: 33949, 0x1000, 50%")
-            if (v === null) return
-            let x = parseInt(v)
-            if (v.endsWith('%')) {
-                x = dataLen * x / 100
-            }
-
-            let n = Math.ceil(x / pageSize) - 1
-            if (n < 0) n = 0
-            if (n > maxPage) n = maxPage
-            self.gotoOffset(n * pageSize)
-        })
-        group.appendChild(btn)
-        parent.appendChild(group)
-    }
-    
-    createTree (parent: Element, d: dom.Region[]) {
-        const t = document.createElement('table')
-        t.className = 'tree'
-        const thead = document.createElement('thead')
+    if (r.flagDefinition) {
+      const def = [...r.flagDefinition]
+      def.sort((a, b) => a[0] - b[0])
+      const tbl = util.createTable('flag_def value_def', ['start bit', 'values', 'name', 'meaning'])
+      for (const f of def) {
         const tr = document.createElement('tr')
-        tr.append(util.createHtmlElement('th', 'name'))
-        tr.append(util.createHtmlElement('th', 'length'))
-        tr.append(util.createHtmlElement('th', 'value'))
-        thead.appendChild(tr)
-        t.appendChild(thead)
-        const tb = document.createElement('tbody')
-        t.append(tb)
-        parent.appendChild(t)
-
-        for (const r of d) {
-            tb.append(this.createRegionRow(r, 0))
-        }
+        tr.appendChild(util.createHtmlElement('td', f[0].toString()))
+        tr.appendChild(util.createHtmlElement('td', [f[1]].flat().join(',')))
+        tr.appendChild(util.createHtmlElement('td', f[2]))
+        tr.appendChild(util.createHtmlElement('td', f[3]))
+        tbl.tbody.appendChild(tr)
+      }
+      this.desc.appendChild(tbl.table)
     }
+  }
 
-    createBtn(text: string, c: string, onclick: ()=>void) {
-        let btn = document.createElement('button')
-        btn.textContent = text
-        btn.classList.add(...c.split(' '))
-        btn.onclick = onclick
-        return btn
+  onRowSelect (row: RegionRow) {
+    if (this.currentRow) {
+      this.currentRow.classList.remove('select')
+      this.delRegionRowStyle(this.currentRow, 'cover')
     }
+    this.currentRow = row
+    this.currentRow.classList.add('select')
+    this.addRegionRowStyle(this.currentRow, 'cover')
 
-    getRegionDisplayText(r: dom.Region) {
-        let text = r.ID
-        if (r.numValue !== undefined) {
-            text += ` 0x${r.numValue.toString(16)} (${r.numValue})`
+    const r = row.region
+    this.highlights = []
+    if (r.subRegions) {
+      for (const subR of r.subRegions) {
+        if (subR !== undefined) {
+          this.highlights.push({ color: this.getColorForDataType(subR.type), start: subR.startPos, end: subR.endPos, title: this.getRegionDisplayText(subR) })
         }
-        if (r.strValue !== undefined) {
-            text += ' ' + r.strValue
-        }
-        return text
+      }
     }
+    this.highlights.push({ color: this.getColorForDataType(r.type), start: r.startPos, end: r.endPos, title: this.getRegionDisplayText(r) })
+    this.gotoPage(this.getPage(r.startPos))
+    this.updateDesc(r)
+  }
 
-    onRowSelect(row: RegionRow) {
-        if (this.currentRow) {
-            this.currentRow.classList.remove('select')
-            this.delRegionRowStyle(this.currentRow, 'cover')
-        }
-        this.currentRow = row
-        this.currentRow.classList.add('select')
-        this.addRegionRowStyle(this.currentRow, 'cover')
-
-        const r = row.region
-        this.highlights = []
-        if (r.subRegions) {
-            for (const subR of r.subRegions) {
-                if (subR !== undefined)
-                    this.highlights.push({color: this.getColorForDataType(subR.type), start: subR.startPos, end: subR.endPos, title: this.getRegionDisplayText(subR)})
-            }
-        }
-        this.highlights.push({color: this.getColorForDataType(r.type), start: r.startPos, end: r.endPos, title: this.getRegionDisplayText(r)})
-        this.gotoPage(this.getPage(r.startPos))
-        this.desc.textContent = r.description
-    }
-
-    onTreeBtnClick(btn: RegionButton) {
-        const row = btn.row
-        let childRows = row.childRows
-        const r = row.region
-        if (!row.expand) {
-            btn.textContent = '-'
-            const depth = row.depth
-            if (childRows === undefined && r.subRegions) {
-                childRows = r.subRegions.map(region=>{
-                    const subRow = this.createRegionRow(region, depth + 1)
-                    return subRow
-                })
-                row.childRows = childRows
-                for (const childRow of childRows.reverse()) util.insertAfter(row, childRow)
-                if (this.currentRow) {
-                    this.addRegionRowStyle(this.currentRow, 'cover')
-                }
-            }
-            row.expand = true
-            this.showRegionRowsRecursive(row)
+  onTreeBtnClick (btn: RegionButton) {
+    const row = btn.row
+    let childRows = row.childRows
+    const r = row.region
+    if (!row.expand) {
+      btn.src = 'images/expand.png'
+      const depth = row.depth
+      if (childRows === undefined && r.subRegions) {
+        childRows = []
+        // if there are so many rows to create (e.g. when a zip file contain too many entries), it will hurt performance
+        // so we create `grouping row` here, to split entries by groups, to make sure <= 100 rows will be created
+        const indexStart = row.groupingRow ? row.indexStart : 0
+        const indexEnd = row.groupingRow ? row.indexEnd : r.subRegions.length
+        const count = indexEnd - indexStart
+        const groupSize = count > 1000000 ? 1000000 : (count > 10000 ? 10000 : (count > 100 ? 100 : 1))
+        if (groupSize > 1) {
+          for (let i = indexStart; i < indexEnd; i += groupSize) {
+            childRows.push(this.createRegionRow(r, depth + 1, true, i, Math.min(indexEnd, i + groupSize)))
+          }
         } else {
-            btn.textContent = '+'
-            row.expand = false
-            this.hideRegionRowsRecursive(row)
+          // no need to group
+          for (let i = indexStart; i < indexEnd; i++) {
+            let region = r.subRegions[i]
+            if (region === undefined && r.subRegionFetcher) {
+              region = r.subRegionFetcher(i)
+              r.subRegions[i] = region
+            }
+            childRows.push(this.createRegionRow(region, depth + 1))
+          }
         }
+
+        row.childRows = childRows
+        for (const childRow of childRows.reverse()) util.insertAfter(row, childRow)
+        if (this.currentRow) {
+          this.addRegionRowStyle(this.currentRow, 'cover')
+        }
+      }
+      row.expand = true
+      this.showRegionRowsRecursive(row)
+    } else {
+      btn.src = 'images/collapse.png'
+      row.expand = false
+      this.hideRegionRowsRecursive(row)
+    }
+  }
+
+  showRegionRowsRecursive (row: RegionRow) {
+    for (const r of row.childRows) {
+      r.style.display = ''
+      if (r.expand) this.showRegionRowsRecursive(r)
+    }
+  }
+
+  hideRegionRowsRecursive (row: RegionRow) {
+    for (const r of row.childRows) {
+      r.style.display = 'none'
+      if (r.expand) this.hideRegionRowsRecursive(r)
+    }
+  }
+
+  addRegionRowStyle (row: RegionRow, c: string) {
+    if (row.childRows) {
+      for (const r of row.childRows) {
+        r.classList.add(c)
+        this.addRegionRowStyle(r, c)
+      }
+    }
+  }
+
+  delRegionRowStyle (row: RegionRow, c: string) {
+    if (row.childRows) {
+      for (const r of row.childRows) {
+        r.classList.remove(c)
+        this.delRegionRowStyle(r, c)
+      }
+    }
+  }
+
+  createRegionRow (r: Region, depth: number, groupingRow = false, indexStart = 0, indexEnd = 0) {
+    const row = document.createElement('tr') as RegionRow
+    const tdID = document.createElement('td')
+    tdID.style.paddingLeft = `${depth * 20}px`
+    if (r.subRegions !== undefined) {
+      const btn = document.createElement('img') as RegionButton
+      btn.src = 'images/collapse.png'
+      btn.onclick = e => {
+        if (e.currentTarget) this.onTreeBtnClick(e.currentTarget as RegionButton)
+        e.stopPropagation()
+      }
+      btn.row = row
+      tdID.append(btn)
+      tdID.style.display = 'flex'
+      tdID.style.alignItems = 'center'
     }
 
-    showRegionRowsRecursive(row: RegionRow) {
-        for (const r of row.childRows) {
-            r.style.display = ''
-            if (r.expand) this.showRegionRowsRecursive(r)
-        }
+    if (groupingRow) {
+      tdID.append(`[${indexStart}..${indexEnd}]`)
+      row.append(tdID)
+      row.append(util.createHtmlElement('td', ''))
+      row.append(util.createHtmlElement('td', ''))
+    } else {
+      tdID.append(r.ID)
+      row.append(tdID)
+      row.append(util.createHtmlElement('td', `${r.endPos - r.startPos}`))
+      const td = document.createElement('td')
+      td.appendChild(this.createRegionDisplay(r))
+      row.append(td)
     }
 
-    hideRegionRowsRecursive(row: RegionRow) {
-        for (const r of row.childRows) {
-            r.style.display = 'none'
-            if (r.expand) this.hideRegionRowsRecursive(r)
-        }
+    row.region = r
+    row.depth = depth
+    row.expand = false
+    row.groupingRow = groupingRow
+    row.indexStart = indexStart
+    row.indexEnd = indexEnd
+    row.onclick = e => this.onRowSelect(e.currentTarget as RegionRow)
+
+    return row
+  }
+
+  createDataView (parent: Element, columns: number, rows: number) {
+    const v = document.createElement('div')
+    v.classList.add('data_view')
+    parent.appendChild(v)
+
+    const divO = document.createElement('div')
+    divO.classList.add('offset_wrapper')
+    for (let i = 0; i < rows; i++) {
+      const span = document.createElement('span')
+      span.style.display = 'block'
+      divO.appendChild(span)
+      this.offsets.push(span)
     }
 
-    addRegionRowStyle(row: RegionRow, c: string) {
-        if (row.childRows) {
-            for (const r of row.childRows) {
-                r.classList.add(c)
-                this.addRegionRowStyle(r, c)
-            }
-        }
+    const divT = document.createElement('div')
+    divT.classList.add('text')
+    for (let i = 0; i < rows; i++) {
+      const span = document.createElement('span')
+      span.style.display = 'block'
+      divT.appendChild(span)
+      this.texts.push(span)
     }
 
-    delRegionRowStyle(row: RegionRow, c: string) {
-        if (row.childRows) {
-            for (const r of row.childRows) {
-                r.classList.remove(c)
-                this.delRegionRowStyle(r, c)
-            }
-        }
+    const divD = document.createElement('div')
+    divD.classList.add('byte_wrapper')
+    for (let i = 0; i < rows; i++) {
+      const l = document.createElement('div')
+      divD.appendChild(l)
+
+      const byteRow: HTMLSpanElement[] = []
+      this.byteCells.push(byteRow)
+      for (let j = 0; j < columns; j++) {
+        const b = document.createElement('span')
+        b.classList.add('data')
+        l.appendChild(b)
+        byteRow.push(b)
+      }
     }
 
-    createRegionRow(r: dom.Region, depth: number) {
-        const row = document.createElement('tr') as RegionRow
-        const tdID = document.createElement('td')
-        tdID.style.paddingLeft = `${depth * 20}px`
-        if (r.subRegions !== undefined) {
-            const btn = document.createElement('button') as RegionButton
-            btn.textContent = '+'
-            btn.onclick = e => {
-                if (e.currentTarget) this.onTreeBtnClick(e.currentTarget as RegionButton)
-                e.stopPropagation()
-            }
-            btn.row = row
-            tdID.append(btn)
-        }
-        tdID.append(r.ID)
+    v.append(divO, divD, divT)
+  }
 
-        row.append(tdID)
-        row.append(util.createHtmlElement('td', `${r.endPos - r.startPos}`))
-        row.append(util.createHtmlElement('td', this.getRegionDisplayText(r)))
-        row.region = r
-        row.depth = depth
-        row.expand = false
-        row.onclick = e => this.onRowSelect(e.currentTarget as RegionRow)
-
-        return row
+  gotoOffset (offset: number) {
+    this.offset = offset
+    const page = Math.floor(offset / (this.columns * this.rows))
+    const totalPage = Math.floor(this.dom.buffer.byteLength / (this.columns * this.rows))
+    if (this.positionElement !== undefined) {
+      this.positionElement.innerText = `${page + 1} / ${totalPage + 1}`
     }
-
-    insertRegion (parent: HTMLUListElement, r: dom.Region) {
-        const li = document.createElement('li') as RegionElement
-        parent.appendChild(li)
-        li.region = r
-
-        const span = document.createElement('span')
-        span.textContent = this.getRegionDisplayText(r)
-        li.appendChild(span)
-
-        if (r.interpretedValue !== undefined) {
-            const iSpan = document.createElement('span')
-            iSpan.classList.add('interpreted')
-            iSpan.textContent = r.interpretedValue
-            li.appendChild(iSpan)
-        }
-
-        if (r.subRegions !== undefined) {
-            li.classList.add('caret')
-        }
-    
-        const that = this
-        li.addEventListener("click", function(e) {
-            if (that.getParentLI(e.target as HTMLElement) !== e.currentTarget) {
-                // do not handle event from child LIs
-                return
-            }
-
-            const l = e.currentTarget as RegionElement
-
-            if (that.highlightLI) {
-                that.highlightLI.classList.remove('highlight')
-            }
-            that.highlightLI = l
-            that.highlightLI.classList.add('highlight')
-
-            const r = l.region
-            that.highlights = []
-            if (r.subRegions) {
-                for (const subR of r.subRegions) {
-                    if (subR !== undefined)
-                        that.highlights.push({color: that.getColorForDataType(subR.type), start: subR.startPos, end: subR.endPos, title: that.getRegionDisplayText(subR)})
-                }
-            }
-            that.highlights.push({color: that.getColorForDataType(r.type), start: r.startPos, end: r.endPos, title: that.getRegionDisplayText(r)})
-            that.gotoPage(that.getPage(r.startPos))
-            that.desc.textContent = l.region.description
-
-            if (r.subRegions !== undefined) {
-                l.classList.toggle('caret-down')
-                let ul = l.getElementsByTagName('UL').item(0) as HTMLUListElement
-                if (ul !== null) {
-                    ul.classList.toggle('active')
-                } else { // not yet constructed
-                    ul = document.createElement('ul')
-                    ul.classList.add('nested', 'active')
-                    l.appendChild(ul)
-                    
-                    // if there are less than 100 sub regions, we construct them directly
-                    // otherwise we use pseudo elements to wrap them
-                    if (r.subRegions.length < 100) {
-                        for (let i = 0; i < r.subRegions.length; i++) {
-                            let subRegion = r.subRegions[i]
-                            if (subRegion === undefined && r.subRegionFetcher !== undefined) {
-                                // which means it's lazy init
-                                subRegion = r.subRegionFetcher(i)
-                            }
-                            that.insertRegion(ul, subRegion)
-                        }
-                    } else {
-                        for (let i = 0; i < r.subRegions.length; i += 100) {
-                            const li = document.createElement('li') as RegionElement
-                            ul.appendChild(li)
-                            const endIndex = Math.min(r.subRegions.length, i + 100)
-                            li.textContent = `[${i}..${endIndex-1}]`
-                            li.classList.add('caret')
-                            li.startIndex = i
-                            li.endIndex = endIndex
-                            li.region = r
-                            li.addEventListener("click", function (e) {
-                                if (e.target !== e.currentTarget) return
-                                const ll = e.currentTarget as RegionElement
-                                ll.classList.toggle("caret-down")
-                                let sul = ll.getElementsByTagName('UL').item(0) as HTMLUListElement
-                                if (sul) {
-                                    sul.classList.toggle('active')
-                                } else if (ll.region.subRegions !== undefined) {
-                                    sul = document.createElement('ul')
-                                    sul.classList.add('nested', 'active')
-                                    ll.appendChild(sul)
-                                    for (let i = ll.startIndex; i < ll.endIndex; i++) {
-                                        let subRegion = ll.region.subRegions[i]
-                                        if (subRegion === undefined && ll.region.subRegionFetcher !== undefined) {
-                                            subRegion = ll.region.subRegionFetcher(i)
-                                        }
-                                        that.insertRegion(sul, subRegion)
-                                    }
-                                }
-                            })
-                        }
-                    }
-                }
-            }
-        })
-    }
-
-    createDataView (parent: Element, columns: number, rows: number) {
-        const tbl = document.createElement('table')
-        tbl.classList.add('data_view')
-        parent.appendChild(tbl)
-        for (let i = 0; i < rows; i++) {
-            const tr = document.createElement('tr')
-            tbl.appendChild(tr)
-
-            const tdOffset = document.createElement('td')
-            tdOffset.classList.add('offset')
-            tr.appendChild(tdOffset)
-            this.tdOffset.push(tdOffset)
-
-            const dataRow:HTMLTableCellElement[] = []
-            this.tdData.push(dataRow)
-            for (let j = 0; j < columns; j++) {
-                const td = document.createElement('td')
-                tr.appendChild(td)
-                td.classList.add('data')
-                dataRow.push(td)
+    const d = new Uint8Array(this.dom.buffer, offset)
+    let lastRangeIndex = -1
+    let lastCell: HTMLSpanElement | null = null
+    for (let i = 0; i < this.rows; i++) {
+      const offsetText = this.toHex(offset + i * this.columns)
+      this.offsets[i].textContent = offsetText
+      let text = ''
+      for (let j = 0; j < this.columns; j++) {
+        const index = i * this.columns + j
+        const td = this.byteCells[i][j]
+        if (index < d.byteLength) {
+          const c = d[index]
+          text += (c >= 0x20 && c < 0x80) ? String.fromCharCode(c) : '·'
+          this.byteCells[i][j].textContent = c.toString(16).padStart(2, '0')
+          const rangeIndex = this.highlights.findIndex(v => offset + index >= v.start && offset + index < v.end)
+          const splitterColor = 'white'
+          if (rangeIndex >= 0) {
+            const color = util.colorCode(...this.highlights[rangeIndex].color)
+            if (lastRangeIndex !== rangeIndex) {
+              if (lastCell) {
+                lastCell.style.borderRightColor = splitterColor
+              }
+              td.style.borderLeftColor = splitterColor
+              td.style.borderRightColor = color
+            } else {
+              td.style.borderLeftColor = color
+              td.style.borderRightColor = color
             }
 
-            const tdText = document.createElement('td')
-            tdText.classList.add('text')
-            tr.appendChild(tdText)
-            this.tdText.push(tdText)
+            lastCell = td
+            lastRangeIndex = rangeIndex
+
+            td.style.backgroundColor = color
+            td.title = this.highlights[rangeIndex].title
+          } else {
+            td.style.removeProperty('background-color')
+            td.style.removeProperty('border-left-color')
+            td.style.removeProperty('border-right-color')
+          }
+        } else {
+          text += ' '
+          td.textContent = ''
+          td.style.removeProperty('background-color')
+          td.style.removeProperty('border-left-color')
+          td.style.removeProperty('border-right-color')
         }
+      }
+
+      this.texts[i].textContent = text
     }
+  }
 
-    gotoOffset (offset: number) {
-        this.offset = offset
-        const page = Math.floor(offset / (this.columns * this.rows))
-        const totalPage = Math.floor(this.dom.buffer.byteLength / (this.columns * this.rows))
-        if (this.positionElement !== undefined) {
-            this.positionElement.innerText = `${page + 1} / ${totalPage + 1}`
-        }
-        const d = new Uint8Array(this.dom.buffer, offset)
-        let dimColor = false
-        let lastRangeIndex = -1
-        for (let i = 0; i < this.rows; i++) {
-            const offsetText = this.toHex(offset + i * this.columns)
-            this.tdOffset[i].textContent = offsetText
-            let text = ''
-            for (let j = 0; j < this.columns; j++) {
-                const index = i * this.columns + j
-                const td = this.tdData[i][j]
-                if (index < d.byteLength) {
-                    const c = d[index]
-                    text += (c >= 0x20 && c < 0x80)? String.fromCharCode(c) : '·'
-                    this.tdData[i][j].textContent = c.toString(16).padStart(2, '0')
-                    const rangeIndex = this.highlights.findIndex(v => offset + index >= v.start && offset + index < v.end)
-                    if (rangeIndex >= 0) {
-                        if (lastRangeIndex !== -1 && lastRangeIndex != rangeIndex) {
-                            if (this.isSameColor(this.highlights[lastRangeIndex].color, this.highlights[rangeIndex].color)) {
-                                dimColor = !dimColor
-                            } else {
-                                dimColor = false
-                            }
-                        }
-                        lastRangeIndex = rangeIndex
+  gotoPage (page: number) {
+    this.gotoOffset(page * this.columns * this.rows)
+  }
 
-                        let color = this.highlights[rangeIndex].color
-                        if (dimColor) {
-                            let [h, s, l] = util.rgbToHsl(...color)
-                            l += (1-l) / 2
-                            color = util.hslToRgb(h, s, l)
-                        }
-
-                        const [r, g, b] = color
-                        td.style.backgroundColor = `rgb(${r}, ${g}, ${b})`
-                        td.title = this.highlights[rangeIndex].title
-                    }
-                    else {
-                        td.style.backgroundColor = '#FFFFFF'
-                    }
-                } else {
-                    text += ' '
-                    td.textContent = ''
-                    td.style.backgroundColor = '#FFFFFF'
-                }
-            }
-
-            this.tdText[i].textContent = text
-        }
+  ensureVisible (offset: number) {
+    const wantedOffset = Math.floor(offset / this.columns) * this.columns
+    if (wantedOffset !== this.offset) {
+      this.gotoOffset(wantedOffset)
     }
+  }
 
-    gotoPage (page: number) {
-        this.gotoOffset(page * this.columns * this.rows)
-    }
+  toHex (x: number) {
+    return '0X' + x.toString(16).padStart(8, '0')
+  }
 
-    ensureVisible (offset: number) {
-        const wantedOffset = Math.floor(offset / this.columns) * this.columns
-        if (wantedOffset !== this.offset) {
-            this.gotoOffset(wantedOffset)
-        }
-    }
+  getPage (x: number) {
+    return Math.floor(x / (this.columns * this.rows))
+  }
 
-    toHex (x: number) {
-        return '0X' + x.toString(16).padStart(8, '0')
-    }
+  createElement (tag: string, classes: string | string[]) {
+    const e = document.createElement(tag)
+    e.classList.add(...classes)
+    return e
+  }
 
-    getPage (x: number) {
-        return Math.floor(x / (this.columns * this.rows))
-    }
+  isSameColor (c1: [number, number, number], c2: [number, number, number]) {
+    return c1[0] === c2[0] && c1[1] === c2[1] && c1[2] === c2[2]
+  }
 
-    getParentLI(x: HTMLElement | null) {
-        while (x) {
-            if (x.tagName === 'LI') return x
-            x = x.parentElement
-        }
-        return x
+  getColorForDataType (type: RegionType): [number, number, number] {
+    // TODO: theme support
+    const theme : {[id: string]: [number, number, number]} = {
+      Number: [0xFF, 0x88, 0xDC],
+      String: [0xA0, 0xA0, 0xF0],
+      Offset: [0x00, 0xBF, 0xFF],
+      Size: [0x30, 0xFB, 0x80],
+      Compound: [0xF0, 0xF0, 0xE0],
+      General: [0xE0, 0xE0, 0xE0],
+      Time: [0xFF, 0x80, 0xFF],
+      Flag: [0xA0, 0xB0, 0xFF]
     }
-
-    createElement(tag: string, classes: string | string[]) {
-        const e = document.createElement(tag)
-        e.classList.add(...classes)
-        return e
-    }
-
-    isSameColor(c1: [number, number, number], c2: [number, number, number]) {
-        return c1[0] === c2[0] && c1[1] === c2[1] && c1[2] === c2[2]
-    }
-
-    getColorForDataType(type: dom.RegionType): [number, number, number] {
-        // TODO: theme support
-        const theme : {[id:string]: [number, number, number]} = {
-            N: [0xFF, 0x88, 0xDC],
-            n: [0xFF, 0x88, 0xDC],
-            S: [0xE0, 0xE0, 0x80],
-            s: [0xE0, 0xE0, 0x80],
-            P: [0x00, 0xBF, 0xFF],
-            L: [0x30, 0xFB, 0x80],
-            C: [0xD0, 0xD0, 0xD0],
-            G: [0xF0, 0xF0, 0xC0]
-        }
-        return theme[type]
-    }
+    return theme[RegionType[type]]
+  }
 }
