@@ -12,6 +12,7 @@ type Highlight = {
 interface RegionRow extends HTMLTableRowElement {
     region: Region,
     childRows: RegionRow[],
+    parentRow?: RegionRow
     expand: boolean,
     depth: number,
     // the following 2 property are for grouping rows
@@ -21,33 +22,31 @@ interface RegionRow extends HTMLTableRowElement {
 }
 
 interface RegionButton extends HTMLImageElement {
-    row: RegionRow
+  row: RegionRow
+}
+
+interface DataSpan extends HTMLSpanElement {
+  offset: number
 }
 
 export class Visualizer {
   container: Element
   dom: FileDOM
-  offsets: HTMLSpanElement[]
-  byteCells: HTMLSpanElement[][]
-  texts: HTMLSpanElement[]
+  offsets: HTMLSpanElement[] = []
+  byteCells: HTMLSpanElement[][] = []
+  texts: HTMLSpanElement[][] = []
   positionElement: HTMLSpanElement
   desc: HTMLElement
-  columns: number
-  rows: number
-  offset: number
-  highlights: Highlight[]
+  columns: number = 16
+  rows: number = 16
+  offset: number = 0
+  sel: number = -1
+  highlights: Highlight[] = []
   currentRow?: RegionRow
 
   constructor (e: Element, d: FileDOM) {
     this.container = e
     this.dom = d
-    this.offsets = []
-    this.byteCells = []
-    this.texts = []
-    this.columns = 16
-    this.rows = 16
-    this.offset = 0
-    this.highlights = []
     this.positionElement = document.createElement('span')
     this.positionElement.className = 'position'
     this.desc = document.createElement('div')
@@ -55,25 +54,16 @@ export class Visualizer {
 
   visualize () {
     this.container.innerHTML = ''
-    const tbl = document.createElement('table')
-    tbl.className = 'main_ui'
-    tbl.style.borderSpacing = 'unset'
-    this.container.appendChild(tbl)
+    const ui = document.createElement('div')
+    this.container.appendChild(ui)
+    ui.className = 'main_ui'
 
-    const tr = document.createElement('tr')
-    tbl.appendChild(tr)
-
-    const tdTree = document.createElement('td')
-    tdTree.style.verticalAlign = 'top'
-    tdTree.style.padding = '0px'
-    tr.appendChild(tdTree)
-    tdTree.classList.add('tree')
     const divTree = document.createElement('div')
-    tdTree.appendChild(divTree)
+    ui.appendChild(divTree)
     divTree.classList.add('tree')
-    const tdView = document.createElement('td')
+    const tdView = document.createElement('div')
+    ui.appendChild(tdView)
     tdView.classList.add('view')
-    tr.appendChild(tdView)
 
     this.desc.classList.add('description')
 
@@ -296,6 +286,15 @@ export class Visualizer {
       }
     }
     this.highlights.push({ color: this.getColorForDataType(r.type), start: r.startPos, end: r.endPos, title: this.getRegionDisplayText(r) })
+
+    // also highlight parent region if it's a leaf
+    if (!r.subRegions && !r.subRegionFetcher) {
+      const pr = row.parentRow?.region
+      if (pr) {
+        this.highlights.push({ color: [240, 240, 240], start: pr.startPos, end: pr.endPos, title: this.getRegionDisplayText(pr) })
+      }
+    }
+
     this.gotoPage(this.getPage(r.startPos))
     this.updateDesc(r)
   }
@@ -332,6 +331,8 @@ export class Visualizer {
         }
 
         row.childRows = childRows
+        childRows.forEach(r => { r.parentRow = row })
+
         for (const childRow of childRows.reverse()) util.insertAfter(row, childRow)
         if (this.currentRow) {
           this.addRegionRowStyle(this.currentRow, 'cover')
@@ -343,6 +344,17 @@ export class Visualizer {
       btn.src = 'images/collapse.png'
       row.expand = false
       this.hideRegionRowsRecursive(row)
+    }
+  }
+
+  ensureRegionRowVisible (row: RegionRow) {
+    while (true) {
+      row.style.display = ''
+      if (row.parentRow) {
+        row = row.parentRow
+      } else {
+        break
+      }
     }
   }
 
@@ -420,6 +432,33 @@ export class Visualizer {
     return row
   }
 
+  onByteClick (e: DataSpan) {
+    console.log(e.offset)
+    this.highlightCells(e.offset === this.sel ? -1 : e.offset)
+    this.syncTree(this.offset + e.offset)
+  }
+
+  highlightCells (offset: number) {
+    if (this.sel >= 0) {
+      const oldCells = this.getCells(this.sel)
+      oldCells[0].classList.remove('sel')
+      oldCells[1].classList.remove('sel')
+    }
+
+    this.sel = offset
+    if (this.sel >= 0) {
+      const cells = this.getCells(this.sel)
+      cells[0].classList.add('sel')
+      cells[1].classList.add('sel')
+    }
+  }
+
+  getCells (offset: number) {
+    const row = Math.floor(offset / this.columns)
+    const col = offset % this.columns
+    return [this.byteCells[row][col], this.texts[row][col]]
+  }
+
   createDataView (parent: Element, columns: number, rows: number) {
     const v = document.createElement('div')
     v.classList.add('data_view')
@@ -434,17 +473,8 @@ export class Visualizer {
       this.offsets.push(span)
     }
 
-    const divT = document.createElement('div')
-    divT.classList.add('text')
-    for (let i = 0; i < rows; i++) {
-      const span = document.createElement('span')
-      span.style.display = 'block'
-      divT.appendChild(span)
-      this.texts.push(span)
-    }
-
     const divD = document.createElement('div')
-    divD.classList.add('byte_wrapper')
+    divD.classList.add('hex')
     for (let i = 0; i < rows; i++) {
       const l = document.createElement('div')
       divD.appendChild(l)
@@ -452,14 +482,72 @@ export class Visualizer {
       const byteRow: HTMLSpanElement[] = []
       this.byteCells.push(byteRow)
       for (let j = 0; j < columns; j++) {
-        const b = document.createElement('span')
-        b.classList.add('data')
+        const b = document.createElement('span') as DataSpan
+        b.offset = i * columns + j
+        b.classList.add('byte_hex')
+        b.onclick = e => this.onByteClick(e.currentTarget as DataSpan)
         l.appendChild(b)
         byteRow.push(b)
       }
     }
 
+    const divT = document.createElement('div')
+    divT.classList.add('text')
+    for (let i = 0; i < rows; i++) {
+      const l = document.createElement('div')
+      divT.appendChild(l)
+
+      const textRow: HTMLSpanElement[] = []
+      this.texts.push(textRow)
+      for (let j = 0; j < columns; j++) {
+        const t = document.createElement('span') as DataSpan
+        t.offset = i * columns + j
+        t.classList.add('byte_text')
+        t.onclick = e => this.onByteClick(e.currentTarget as DataSpan)
+        l.appendChild(t)
+        textRow.push(t)
+      }
+    }
+
     v.append(divO, divD, divT)
+  }
+
+  syncTree (offset: number) {
+    const row = this.findRegion(offset)
+    if (row !== null) {
+      this.ensureRegionRowVisible(row)
+      this.onRowSelect(row)
+    }
+  }
+
+  findRegion (offset: number) {
+    const tbody = this.container.querySelector('tbody')
+    if (tbody === null) {
+      return null
+    }
+
+    for (const e of tbody.children) {
+      const row = e as RegionRow
+      if (!row.parentRow) {
+        const r = this.findSubRegion(offset, e as RegionRow)
+        if (r !== null) {
+          return r
+        }
+      }
+    }
+
+    return null
+  }
+
+  findSubRegion (offset: number, row: RegionRow): RegionRow | null {
+    if (offset < row.region.startPos || offset >= row.region.endPos) return null
+    if (row.childRows) {
+      for (const subRow of row.childRows) {
+        const r = this.findSubRegion(offset, subRow)
+        if (r !== null) return r
+      }
+    }
+    return row
   }
 
   gotoOffset (offset: number) {
@@ -475,13 +563,13 @@ export class Visualizer {
     for (let i = 0; i < this.rows; i++) {
       const offsetText = this.toHex(offset + i * this.columns)
       this.offsets[i].textContent = offsetText
-      let text = ''
       for (let j = 0; j < this.columns; j++) {
         const index = i * this.columns + j
         const td = this.byteCells[i][j]
+        const sText = this.texts[i][j]
         if (index < d.byteLength) {
           const c = d[index]
-          text += (c >= 0x20 && c < 0x80) ? String.fromCharCode(c) : '·'
+          sText.textContent = (c > 0x20 && c < 0x80) ? String.fromCharCode(c) : '·'
           this.byteCells[i][j].textContent = c.toString(16).padStart(2, '0')
           const rangeIndex = this.highlights.findIndex(v => offset + index >= v.start && offset + index < v.end)
           const splitterColor = 'white'
@@ -509,15 +597,13 @@ export class Visualizer {
             td.style.removeProperty('border-right-color')
           }
         } else {
-          text += ' '
+          sText.textContent = ' '
           td.textContent = ''
           td.style.removeProperty('background-color')
           td.style.removeProperty('border-left-color')
           td.style.removeProperty('border-right-color')
         }
       }
-
-      this.texts[i].textContent = text
     }
   }
 

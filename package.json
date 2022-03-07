@@ -6,8 +6,8 @@
   "main": "index.js",
   "scripts": {
     "gen": "test/datagen.js",
-    "dev": "start http-server -c-1 -p 8080 . && start http://localhost:8080/app/bdp.html",
-    "dist": "start http-server -c-1 -p 8080 . && start http://localhost:8080/dist/bdp.html",
+    "dev": "start http-server -c-1 -p 8080 ./app && start http://localhost:8080/bdp.html",
+    "dist": "start http-server -c-1 -p 8080 ./dist && start http://localhost:8080/bdp.html",
     "build": "tsc && node build.js",
     "pack": "node build.js"
   },

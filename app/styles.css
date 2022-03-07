@@ -4,6 +4,10 @@ body {
     font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Liberation Sans",sans-serif;
 }
 
+div.main_ui {
+    display: flex;
+}
+
 div.data_view {
     font-family: "Cascadia Code", consolas, monospace;
     border: 1px solid grey;
@@ -12,34 +16,37 @@ div.data_view {
     margin-top: 10px;
 }
 
-div.data_view .data {
+div.data_view span.sel {
+    border-color: black !important;
+    box-shadow: 0 0 15px #FFFF00, inset 0 0 5px #FFC000;
+    /*animation: selAnimation 1s linear infinite;*/
+    z-index: 999;
+}
+
+@keyframes selAnimation {
+    0%   { box-shadow: 0 0  1px #FFFF00, inset 0 0 5px #FFC000;  }
+    50%  { box-shadow: 0 0 25px #FFC000, inset 0 0 5px #FFC000;  }
+    100% { box-shadow: 0 0  1px #FFFF00, inset 0 0 5px #FFC000;  }
+}
+
+div.data_view span {
+    border: 1px solid transparent;
+    display: inline-block;
+    position: relative;
+}
+
+span.byte_hex {
     padding-right: 3px;
     padding-left: 3px;
-    border-left: 1px solid white;
-    border-right: 1px solid white;
 }
 
-div.data_view .text {
-    padding-left: 10px;
+div.hex {
+    margin-left: 10px;
+    margin-right: 10px;
 }
 
-div.offset_wrapper {
-    padding-right: 10px;
-}
-
-div.data_view div.offset_wrapper span {
-    margin-top: 1px;
-    margin-bottom: 1px;
-}
-
-div.data_view div.byte_wrapper div {
-    margin-top: 1px;
-    margin-bottom: 1px;
-}
-
-div.data_view div.text span {
-    margin-top: 1px;
-    margin-bottom: 1px;
+div.text {
+    margin-right: 10px;
 }
 
 table.tree {
