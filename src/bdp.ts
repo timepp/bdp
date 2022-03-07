@@ -25,6 +25,7 @@ export function init() {
     parsers.ber = new BerParser()
     parsers.png = new PngParser()
     parsers.jpg = new JpgParser()
+    return Object.keys(parsers)
 }
 
 export function parse(buffer: ArrayBuffer, filename: string, forceType?: string) {

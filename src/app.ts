@@ -13,13 +13,14 @@ export function run(document: Document, testData: InlineFileData) {
 }
 
 function main(document: Document, testData: InlineFileData) {
-    bdp.init()
+    const supportedParses = bdp.init()
 
     let ui = document.createElement('div')
     let input = document.createElement('input')
     input.type = 'file'
 
     document.body.appendChild(input)
+    document.body.appendChild(document.createTextNode(`    registered parsers: ${supportedParses}`))
     document.body.appendChild(document.createElement('br'))
     document.body.appendChild(ui)
 

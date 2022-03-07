@@ -86,16 +86,16 @@ export class Visualizer {
         let group = document.createElement('div')
         group.className = 'btn-group'
 
-        btn = this.createBtn('首页', 'btn btn-outline-primary', () => self.gotoOffset(0))
+        btn = this.createBtn('<<', 'btn btn-outline-primary', () => self.gotoOffset(0))
         group.appendChild(btn)
 
-        btn = this.createBtn('上一页', 'btn btn-outline-primary', () => self.gotoOffset(Math.max(self.offset - pageSize, 0)))
+        btn = this.createBtn('<', 'btn btn-outline-primary', () => self.gotoOffset(Math.max(self.offset - pageSize, 0)))
         group.appendChild(btn)
         
-        btn = this.createBtn('下一页', 'btn btn-outline-primary', () => self.gotoOffset(Math.min(self.offset + pageSize, maxPage * pageSize)))
+        btn = this.createBtn('>', 'btn btn-outline-primary', () => self.gotoOffset(Math.min(self.offset + pageSize, maxPage * pageSize)))
         group.appendChild(btn)
 
-        btn = this.createBtn('尾页', 'btn btn-outline-primary', () => self.gotoOffset(maxPage * pageSize))
+        btn = this.createBtn('>>', 'btn btn-outline-primary', () => self.gotoOffset(maxPage * pageSize))
         group.appendChild(btn)
 
         parent.appendChild(group)
@@ -105,8 +105,8 @@ export class Visualizer {
         group = document.createElement('div')
         group.className = 'btn-group'
 
-        btn = this.createBtn('转到页', 'btn btn-outline-primary', function() {
-            let v = prompt("转到哪一页?")
+        btn = this.createBtn('Goto...', 'btn btn-outline-primary', function() {
+            let v = prompt("which page?")
             if (v === null) return
             let n = parseInt(v)
             if (n < 0) n = 0
@@ -115,8 +115,8 @@ export class Visualizer {
         })
         group.appendChild(btn)
 
-        btn = this.createBtn('转到位置', 'btn btn-outline-primary', function() {
-            const v = prompt("输入位置, 例如: 33949, 0x1000, 50%")
+        btn = this.createBtn('Goto position...', 'btn btn-outline-primary', function() {
+            const v = prompt("Input position e.g.: 33949, 0x1000, 50%")
             if (v === null) return
             let x = parseInt(v)
             if (v.endsWith('%')) {
